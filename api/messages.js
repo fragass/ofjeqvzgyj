@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "POST") {
-    const { name, content } = req.body;
+    const { name, content, image_url } = req.body;
 
     if (!name || !content) {
       return res.status(400).json({ error: "Missing fields" });
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
         Prefer: "return=minimal",
       },
-      body: JSON.stringify({ name, content }),
+      body: JSON.stringify({ name, content, image_url }),
     });
 
     return res.status(response.status).json({ success: true });
@@ -46,3 +46,4 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ error: "Method not allowed" });
 }
+
