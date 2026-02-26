@@ -1,23 +1,30 @@
-document.getElementById("loginForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+import crypto from "crypto";
 
-  const username = document.getElementById("username").value;
-  const password = document.getElementById("password").value;
+export default function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ success: false, message: "Método não permitido" });
+  }
 
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
+  const { username, password } = req.body;
+
+  const usersEnv = process.env.LOGIN_USERS || "";
+  const usersArray = usersEnv.split(",");
+
+  const usersMap = {};
+  usersArray.forEach(pair => {
+    const [user, pass] = pair.split(":");
+    if (user && pass) usersMap[user] = pass;
   });
 
-  const result = await response.json();
+  if (usersMap[username] && usersMap[username] === password) {
+    const token = crypto.randomBytes(32).toString("hex");
 
-  if (result.success) {
-    sessionStorage.setItem("token", result.token);
-    sessionStorage.setItem("loggedUser", result.user);
-    window.location.href = "m3yxe8u27wpoovbz.html";
-  } else {
-    document.getElementById("errorMsg").textContent = "Usuário ou senha inválidos!";
+    return res.status(200).json({
+      success: true,
+      token,
+      user: username
+    });
   }
-});
 
+  return res.status(401).json({ success: false });
+}
