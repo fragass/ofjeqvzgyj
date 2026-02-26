@@ -1,19 +1,22 @@
-const { createClient } = require("@supabase/supabase-js");
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export default async function handler(req, res) {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-module.exports = async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(500).json({ isAdmin: false });
   }
 
-  const { loggedUser } = req.body;
+  const supabase = createClient(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  const loggedUser = req.query.user;
 
   if (!loggedUser) {
-    return res.status(400).json({ isAdmin: false });
+    return res.status(200).json({ isAdmin: false });
   }
 
   const { data, error } = await supabase
@@ -21,14 +24,11 @@ module.exports = async function handler(req, res) {
     .select("id")
     .eq("logged_user", loggedUser)
     .limit(1)
-    .maybeSingle();
+    .single();
 
-  if (error) {
-    console.error("Erro ao verificar admin:", error);
-    return res.status(500).json({ isAdmin: false });
+  if (error || !data) {
+    return res.status(200).json({ isAdmin: false });
   }
 
-  return res.status(200).json({
-    isAdmin: !!data
-  });
-};
+  return res.status(200).json({ isAdmin: true });
+}
