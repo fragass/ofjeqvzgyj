@@ -817,6 +817,8 @@ async function sendMessage() {
         let lastMessageId = null;
         let pendingImageUrl = null;
         let isSendingMessage = false;
+        let lastSentSignature = null;
+        let lastSentAt = 0;
         const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
         function getColorFromName(name) {
@@ -975,7 +977,16 @@ async function sendMessage() {
 
     if (!content && !pendingImageUrl) return;
 
+    const signature = `${loggedUser}|${content || "🖼 Imagem enviada"}|${pendingImageUrl || ""}`;
+    const now = Date.now();
+
+    if (signature === lastSentSignature && now - lastSentAt < 1500) {
+        return;
+    }
+
     isSendingMessage = true;
+    lastSentSignature = signature;
+    lastSentAt = now;
 
     try {
         await fetch('/api/messages', {
@@ -1076,7 +1087,3 @@ async function sendMessage() {
 </script>
 </body>
 </html>
-
-
-
-
