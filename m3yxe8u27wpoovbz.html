@@ -420,7 +420,10 @@ async function uploadImage(file) {
 
                     div.innerHTML = `
                         <div class="message-header">
-                            <span class="username" style="color:${userColor}">${escapeHTML(msg.name)}</span>
+                            <span class="username" style="color:${userColor}">
+    ${msg.name === loggedUser && isAdmin ? '<strong style="color:#ff4d4f;">ADMIN</strong> ' : ''}
+    ${escapeHTML(msg.name)}
+</span>
                             <span class="timestamp">${formattedDate}</span>
                         </div>
                         <div>${contentHTML}</div>
@@ -585,6 +588,7 @@ async function sendMessage() {
 </script>
 </body>
 </html>
+
 
 
 
