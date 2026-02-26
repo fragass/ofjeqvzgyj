@@ -533,9 +533,34 @@ async function sendMessage() {
         sendMessage();
     }
 });
+    (async () => {
+  const loggedUser = sessionStorage.getItem("loggedUser");
+
+  if (!loggedUser) return;
+
+  try {
+    const response = await fetch("/api/check-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ loggedUser })
+    });
+
+    const result = await response.json();
+
+    if (result.isAdmin) {
+      sessionStorage.setItem("isAdmin", "true");
+      applyAdminTag(loggedUser);
+    } else {
+      sessionStorage.removeItem("isAdmin");
+    }
+  } catch (e) {
+    console.error("Erro ao verificar admin:", e);
+  }
+})();
 </script>
 </body>
 </html>
+
 
 
 
