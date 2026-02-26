@@ -557,9 +557,16 @@ async function sendMessage() {
     console.error("Erro ao verificar admin:", e);
   }
 })();
+    function applyAdminTag(username) {
+  const el = document.getElementById("usernameLabel");
+  if (!el) return;
+
+  el.innerHTML = `<strong style="color:#ff4d4f;">ADMIN</strong> ${username}`;
+}
 </script>
 </body>
 </html>
+
 
 
 
