@@ -499,6 +499,7 @@ async function sendMessage() {
             }
         }
 
+        await checkIfAdmin(); 
         loadMessages();
         setInterval(loadMessages, 3000);
         updateOnlineStatus();
@@ -564,9 +565,27 @@ async function sendMessage() {
 
   el.innerHTML = `<strong style="color:#ff4d4f;">ADMIN</strong> ${username}`;
 }
+    async function checkIfAdmin() {
+    try {
+        const res = await fetch("/api/check-admin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: loggedUser })
+        });
+
+        const data = await res.json();
+
+        if (data.isAdmin === true) {
+            isAdmin = true;
+        }
+    } catch (err) {
+        console.error("Erro ao verificar admin:", err);
+    }
+}
 </script>
 </body>
 </html>
+
 
 
 
