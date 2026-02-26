@@ -283,6 +283,7 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
 
 <script>
         const loggedUser = sessionStorage.getItem("loggedUser");
+        let isAdmin = false;
         let lastMessageId = null;
         let pendingImageUrl = null;
         const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
@@ -566,6 +567,7 @@ async function sendMessage() {
 </script>
 </body>
 </html>
+
 
 
 
