@@ -313,17 +313,30 @@
         /* =========================
            NOVO: EVENTO DE PASTE
         ========================== */
-        document.getElementById("content").addEventListener("paste", async (event) => {
-            const items = event.clipboardData.items;
+document.addEventListener("DOMContentLoaded", () => {
+    const contentInput = document.getElementById("content");
 
-            for (let item of items) {
-                if (item.type.indexOf("image") !== -1) {
-                    const file = item.getAsFile();
+    if (!contentInput) return;
+
+    contentInput.addEventListener("paste", async (event) => {
+        console.log("PASTE DETECTADO");
+
+        const items = event.clipboardData?.items;
+        if (!items) return;
+
+        for (let item of items) {
+            if (item.type && item.type.indexOf("image") !== -1) {
+                console.log("IMAGEM DETECTADA:", item.type);
+
+                const file = item.getAsFile();
+                if (file) {
                     await uploadImage(file);
                     event.preventDefault();
                 }
             }
-        });
+        }
+    });
+});
 
         /* =========================
            NOVO: FUNÇÃO DE UPLOAD
@@ -514,6 +527,7 @@
 </script>
 </body>
 </html>
+
 
 
 
