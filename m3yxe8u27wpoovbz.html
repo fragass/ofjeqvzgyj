@@ -971,14 +971,11 @@ async function sendMessage() {
     if (isSendingMessage) return;
 
     const contentInput = document.getElementById('content');
-    const sendBtn = document.querySelector('.send-btn');
     const content = contentInput.value.trim();
 
     if (!content && !pendingImageUrl) return;
 
     isSendingMessage = true;
-    contentInput.disabled = true;
-    if (sendBtn) sendBtn.disabled = true;
 
     try {
         await fetch('/api/messages', {
@@ -997,9 +994,6 @@ async function sendMessage() {
         loadMessages();
     } finally {
         isSendingMessage = false;
-        contentInput.disabled = false;
-        if (sendBtn) sendBtn.disabled = false;
-        contentInput.focus();
     }
 }
         function escapeHTML(str) {
@@ -1082,7 +1076,6 @@ async function sendMessage() {
 </script>
 </body>
 </html>
-
 
 
 
