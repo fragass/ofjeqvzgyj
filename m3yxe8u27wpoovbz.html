@@ -300,6 +300,7 @@ button.send-btn:hover {
         const loggedUser = sessionStorage.getItem("loggedUser");
         let lastMessageId = null;
         let pendingImageUrl = null;
+        let isSending = false;
         const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
         function getColorFromName(name) {
@@ -451,20 +452,43 @@ async function uploadImage(file) {
         }
 
 async function sendMessage() {
+    if (isSending) return; // 🚫 trava envio duplicado
+
     const contentInput = document.getElementById('content');
+    const sendButton = document.querySelector(".send-btn");
     const content = contentInput.value.trim();
 
     if (!content && !pendingImageUrl) return;
 
-    await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            name: loggedUser,
-            content: content || "🖼 Imagem enviada",
-            image_url: pendingImageUrl
-        })
-    });
+    isSending = true;
+    sendButton.disabled = true;
+    sendButton.style.opacity = "0.6";
+    sendButton.style.cursor = "not-allowed";
+
+    try {
+        await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: loggedUser,
+                content: content || "🖼 Imagem enviada",
+                image_url: pendingImageUrl
+            })
+        });
+
+        contentInput.value = '';
+        pendingImageUrl = null;
+
+        loadMessages();
+    } catch (e) {
+        console.error("Erro ao enviar mensagem:", e);
+    } finally {
+        isSending = false;
+        sendButton.disabled = false;
+        sendButton.style.opacity = "1";
+        sendButton.style.cursor = "pointer";
+    }
+}
 
     contentInput.value = '';
     pendingImageUrl = null;
@@ -551,6 +575,7 @@ async function sendMessage() {
 </script>
 </body>
 </html>
+
 
 
 
