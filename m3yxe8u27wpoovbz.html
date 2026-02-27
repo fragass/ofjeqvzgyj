@@ -141,13 +141,17 @@ button.send-btn {
     height: 45px;
     border-radius: 8px;
     border: none;
-    background: #238636;
-    color: white;
+    background: #111111; /* preto suave */
+    color: #ffffff;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.2s, transform 0.2s;
 }
-button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
+
+button.send-btn:hover {
+    background: #000000; /* preto um pouco mais forte no hover */
+    transform: translateY(-1px);
+}
 
 .emoji-toggle {
     cursor: pointer;
@@ -542,6 +546,7 @@ async function sendMessage() {
 </script>
 </body>
 </html>
+
 
 
 
