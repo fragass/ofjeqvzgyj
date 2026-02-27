@@ -10,94 +10,146 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Página inicial - Workday</title>
-    <style>
+   <style>
+/* =========================
+   RESET / SCROLLBAR
+========================= */
 * { box-sizing: border-box; }
 
-html { scrollbar-width: thin; scrollbar-color: #2c2f36 #121316; }
+html {
+    scrollbar-width: thin;
+    scrollbar-color: #cfcfcf #f3f3f3;
+}
 ::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: #121316; }
-::-webkit-scrollbar-thumb { background: #2c2f36; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3d46; }
+::-webkit-scrollbar-track { background: #f3f3f3; }
+::-webkit-scrollbar-thumb {
+    background: #cfcfcf;
+    border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover { background: #bdbdbd; }
 
-.messages::-webkit-scrollbar { width: 8px; }
-.messages::-webkit-scrollbar-track { background: #141519; }
-.messages::-webkit-scrollbar-thumb { background: #2c2f36; border-radius: 6px; }
-.messages::-webkit-scrollbar-thumb:hover { background: #3a3d46; }
-
+/* =========================
+   BODY
+========================= */
 body {
     margin: 0;
-    background: #121316;
+    background: #f5f5f2;
     font-family: 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif;
-    color: #e1e3e8;
+    color: #2a2a2a;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
 }
 
+/* =========================
+   ONLINE BOX
+========================= */
 .online-box {
     position: fixed;
     top: 15px;
     left: 15px;
-    background: #1e2028;
-    border: 1px solid #2c2f36;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
     padding: 8px 14px;
     border-radius: 10px;
     font-size: 12px;
-    color: #b0b3b8;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.35);
+    color: #555;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     z-index: 1000;
 }
 
+.online-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.online-dot {
+    width: 10px;
+    height: 10px;
+    background: #3fb950;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(63,185,80,0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(63,185,80,0); }
+    100% { box-shadow: 0 0 0 0 rgba(63,185,80,0); }
+}
+
+/* =========================
+   CONTAINER
+========================= */
 .container {
     width: 700px;
     height: 700px;
-    background: #1e2028;
-    border-radius: 12px;
-    border: 1px solid #2c2f36;
+    background: #ffffff;
+    border-radius: 14px;
+    border: 1px solid #e2e2e2;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
 }
 
+/* =========================
+   HEADER
+========================= */
 .header {
     padding: 16px;
     font-size: 15px;
     font-weight: 600;
-    border-bottom: 1px solid #2c2f36;
+    border-bottom: 1px solid #e5e5e5;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background: #fafafa;
 }
 
-.warning-text { color: #ffffff; }
+.warning-text { color: #444; }
+
 .admin-link {
     text-decoration: none;
     font-size: 14px;
-    opacity: 0.7;
+    opacity: 0.6;
     transition: 0.2s;
 }
-.admin-link:hover { opacity: 1; transform: scale(1.1); }
+.admin-link:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
 
+/* =========================
+   MESSAGES
+========================= */
 .messages {
     flex: 1;
     padding: 16px;
     overflow-y: auto;
-    background: #181a1f;
-    border-radius: 0 0 0 0;
+    background: #f7f7f5;
 }
 
+.messages::-webkit-scrollbar-track { background: #f7f7f5; }
+
+/* =========================
+   MESSAGE CARD
+========================= */
 .message {
     padding: 12px 14px;
-    border-radius: 8px;
+    border-radius: 10px;
     margin-bottom: 10px;
-    background: #1b1d23;
-    border: 1px solid #2c2f36;
+    background: #ffffff;
+    border: 1px solid #e3e3e3;
     font-size: 13px;
-    transition: background 0.2s;
+    transition: background 0.2s, box-shadow 0.2s;
 }
-.message:hover { background: #24262d; }
+
+.message:hover {
+    background: #fafafa;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
 
 .message-header {
     display: flex;
@@ -106,52 +158,79 @@ body {
 }
 
 .username { font-weight: 600; }
-.timestamp { font-size: 11px; color: #a0a4ab; }
+.timestamp {
+    font-size: 11px;
+    color: #888;
+}
 
+/* =========================
+   FORM
+========================= */
 .form {
     padding: 14px;
-    border-top: 1px solid #2c2f36;
+    border-top: 1px solid #e5e5e5;
     display: flex;
     gap: 8px;
     align-items: center;
     position: relative;
+    background: #fafafa;
 }
 
+/* =========================
+   TEXTAREA
+========================= */
 textarea {
     flex: 1;
     resize: none;
     height: 45px;
     padding: 10px;
-    border-radius: 8px;
-    border: 1px solid #2c2f36;
-    background: #1b1d23;
-    color: #e1e3e8;
+    border-radius: 10px;
+    border: 1px solid #dcdcdc;
+    background: #ffffff;
+    color: #2a2a2a;
     font-size: 13px;
     outline: none;
     transition: border 0.2s, box-shadow 0.2s;
 }
-textarea:focus { border-color: #58a6ff; box-shadow: 0 0 6px rgba(88,166,255,0.3); }
 
+textarea:focus {
+    border-color: #4c8bf5;
+    box-shadow: 0 0 6px rgba(76,139,245,0.3);
+}
+
+/* =========================
+   BUTTON
+========================= */
 button.send-btn {
     padding: 0 18px;
     height: 45px;
-    border-radius: 8px;
+    border-radius: 10px;
     border: none;
-    background: #238636;
+    background: #4c8bf5;
     color: white;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.2s, transform 0.2s;
 }
-button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
 
+button.send-btn:hover {
+    background: #3b78dc;
+    transform: translateY(-1px);
+}
+
+/* =========================
+   EMOJI
+========================= */
 .emoji-toggle {
     cursor: pointer;
     font-size: 20px;
-    opacity: 0.75;
+    opacity: 0.7;
     transition: 0.2s;
 }
-.emoji-toggle:hover { opacity: 1; transform: scale(1.15); }
+.emoji-toggle:hover {
+    opacity: 1;
+    transform: scale(1.15);
+}
 
 .emoji-panel {
     position: absolute;
@@ -160,14 +239,16 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
     width: 260px;
     max-height: 200px;
     overflow-y: auto;
-    background: #1e2028;
-    border: 1px solid #2c2f36;
-    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
     padding: 12px;
     display: none;
     flex-wrap: wrap;
     gap: 6px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
 }
+
 .emoji-panel span {
     cursor: pointer;
     font-size: 20px;
@@ -175,17 +256,19 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
 }
 .emoji-panel span:hover { transform: scale(1.25); }
 
+/* =========================
+   MINI PROFILE
+========================= */
 #mini-profile {
     position: absolute;
     top: 10px;
     right: 10px;
-    background: rgba(30,32,40,0.9);
-    color: #fff;
-    font-family: Arial, sans-serif;
+    background: rgba(255,255,255,0.95);
+    color: #333;
     font-size: 14px;
     padding: 6px 12px;
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -193,21 +276,31 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
     cursor: pointer;
     user-select: none;
 }
-#mini-profile span { font-weight: bold; color: #fff; }
 
-#arrow { transition: transform 0.3s; margin-left: 4px; }
+#mini-profile span {
+    font-weight: bold;
+    color: #333;
+}
 
+#arrow {
+    transition: transform 0.3s;
+}
+
+/* =========================
+   DROPDOWN
+========================= */
 #dropdown-menu {
     display: none;
     position: absolute;
     top: 40px;
     right: 0;
-    background: rgba(30,32,40,0.95);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
     padding: 8px 12px;
     z-index: 1000;
 }
+
 #dropdown-menu button {
     background: #ff4d4d;
     color: #fff;
@@ -216,33 +309,24 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
     padding: 6px 12px;
     cursor: pointer;
     font-size: 14px;
-    transition: background 0.2s, transform 0.1s;
     width: 100%;
 }
-#dropdown-menu button:hover { background: #e60000; transform: translateY(-1px); }
+#dropdown-menu button:hover {
+    background: #e60000;
+}
 
-.online-header { display: flex; align-items: center; gap: 8px; }
-.online-dot {
-    width: 10px;
-    height: 10px;
-    background: #3fb950;
-    border-radius: 50%;
-    animation: pulse 1.5s infinite;
-}
-@keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(63,185,80, 0.7); }
-    70% { box-shadow: 0 0 0 8px rgba(63,185,80, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(63,185,80, 0); }
-}
+/* =========================
+   MENTIONS
+========================= */
 .mention {
-    color: #58a6ff;
+    color: #4c8bf5;
     font-weight: 600;
 }
 .mention-self {
-    color: #ffd700;
+    color: #d4a400;
     font-weight: 700;
 }
-    </style>
+</style>
 </head>
 <body>
     <div class="side-panel right-panel"></div>
@@ -536,6 +620,7 @@ async function sendMessage() {
 </script>
 </body>
 </html>
+
 
 
 
