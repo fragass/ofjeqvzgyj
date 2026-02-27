@@ -245,12 +245,22 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
     color: #ffd700;
     font-weight: 700;
 }
-        /* Mensagens privadas */
 .message.whisper {
     background: #fff5d1;
     border-color: #ffd166;
     color: #000;
     font-style: italic;
+    position: relative;
+}
+
+.message.whisper::before {
+    content: "[Sussurro]";
+    position: absolute;
+    top: -14px;
+    left: 8px;
+    font-size: 11px;
+    color: #e67e22;
+    font-weight: bold;
 }
 
 /* Overlay de notificação */
@@ -267,7 +277,6 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
     transition: opacity 0.4s ease;
     z-index: 9999;
 }
-
 .overlay.success { background: #3fb950; }
 .overlay.error { background: #da3633; }
 .overlay.info { background: #2c2c2c; }
@@ -318,14 +327,10 @@ let isSending = false;
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
-/* =========================
-   UTILIDADES
-========================== */
+/* UTILIDADES */
 function getColorFromName(name) {
     let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return userColors[Math.abs(hash) % userColors.length];
 }
 
@@ -336,23 +341,18 @@ function escapeHTML(str) {
 function highlightMentions(text) {
     const escaped = escapeHTML(text);
     return escaped.replace(/@(\w+)/g, (match, username) => {
-        if (username === loggedUser) {
-            return `<span class="mention-self">@${username}</span>`;
-        }
+        if (username === loggedUser) return `<span class="mention-self">@${username}</span>`;
         return `<span class="mention">@${username}</span>`;
     });
 }
 
-/* =========================
-   EMOJIS
-========================== */
+/* EMOJIS */
 function toggleEmojis() {
     const panel = document.getElementById("emojiPanel");
     panel.style.display = panel.style.display === "flex" ? "none" : "flex";
 }
 
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
-
 function loadEmojis() {
     const panel = document.getElementById("emojiPanel");
     panel.innerHTML = "";
@@ -369,9 +369,7 @@ function loadEmojis() {
 }
 loadEmojis();
 
-/* =========================
-   PASTE DE IMAGEM
-========================== */
+/* PASTE DE IMAGEM */
 document.addEventListener("DOMContentLoaded", () => {
     const contentInput = document.getElementById("content");
     if (!contentInput) return;
@@ -392,9 +390,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-/* =========================
-   UPLOAD DE IMAGEM
-========================== */
+/* UPLOAD DE IMAGEM */
 async function uploadImage(file) {
     const fileName = `${Date.now()}-${file.name}`;
     const formData = new FormData();
@@ -412,22 +408,16 @@ async function uploadImage(file) {
     }
 }
 
-/* =========================
-   PARSE SUSSURRO
-========================== */
+/* PARSE SUSSURRO */
 function parseWhisper(text) {
     if (text.startsWith("/s ")) {
         const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
-        if (match) {
-            return { to: match[1], content: match[2] };
-        }
+        if (match) return { to: match[1], content: match[2] };
     }
     return { to: null, content: text };
 }
 
-/* =========================
-   MENSAGENS
-========================== */
+/* MENSAGENS */
 async function loadMessages() {
     try {
         const res = await fetch('/api/messages');
@@ -437,9 +427,7 @@ async function loadMessages() {
             const lastMessage = data[data.length - 1];
             if (lastMessageId && lastMessage.id !== lastMessageId) {
                 const mentioned = lastMessage.content?.includes("@" + loggedUser);
-                if (lastMessage.name !== loggedUser || mentioned) {
-                    document.getElementById("messageSound").play();
-                }
+                if (lastMessage.name !== loggedUser || mentioned) document.getElementById("messageSound").play();
             }
             lastMessageId = lastMessage.id;
         }
@@ -448,9 +436,10 @@ async function loadMessages() {
         box.innerHTML = '';
 
         data.forEach(msg => {
-            // filtrar sussurros
             const isWhisper = msg.to && (msg.to === loggedUser || msg.name === loggedUser);
-            if (msg.to && !isWhisper) return; // mensagem privada não é para esse usuário
+
+            // FILTRO REAL: sussurros só aparecem para quem deve ver
+            if (msg.to && !isWhisper) return;
 
             const div = document.createElement('div');
             div.className = 'message' + (isWhisper ? ' whisper' : '');
@@ -467,7 +456,7 @@ async function loadMessages() {
                     <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
                     <span class="timestamp">${date}</span>
                 </div>
-                <div>${contentHTML}</div>
+                <div>${isWhisper ? `<strong>[Sussurro]</strong> ${contentHTML}` : contentHTML}</div>
             `;
 
             box.appendChild(div);
@@ -479,9 +468,7 @@ async function loadMessages() {
     }
 }
 
-/* =========================
-   ENVIO (ANTI DUPLICAÇÃO + SUSSURRO)
-========================== */
+/* ENVIO (ANTI DUPLICAÇÃO + SUSSURRO) */
 async function sendMessage() {
     if (isSending) return;
 
@@ -514,9 +501,7 @@ async function sendMessage() {
         pendingImageUrl = null;
         await loadMessages();
 
-        // Overlay notificação de sussurro
-        if (to) showOverlay(`Mensagem privada enviada para @${to}`, "success");
-
+        if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
     } catch (e) {
         console.error("Erro ao enviar mensagem:", e);
         if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
@@ -528,9 +513,7 @@ async function sendMessage() {
     }
 }
 
-/* =========================
-   OVERLAY DE NOTIFICAÇÃO
-========================== */
+/* OVERLAY */
 function showOverlay(msg, type = "info") {
     let overlay = document.createElement("div");
     overlay.className = `overlay ${type}`;
@@ -543,9 +526,7 @@ function showOverlay(msg, type = "info") {
     }, 2200);
 }
 
-/* =========================
-   ONLINE / PERFIL / DROPDOWN
-========================== */
+/* ONLINE / PERFIL / DROPDOWN */
 async function updateOnlineStatus() {
     if (!loggedUser) return;
     await fetch('/api/online', {
@@ -564,9 +545,7 @@ async function loadOnlineUsers() {
     } catch {}
 }
 
-/* =========================
-   INIT
-========================== */
+/* INIT */
 document.addEventListener("DOMContentLoaded", () => {
     const miniProfile = document.getElementById("mini-profile");
     const dropdownMenu = document.getElementById("dropdown-menu");
@@ -608,6 +587,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
