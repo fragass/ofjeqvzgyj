@@ -28,16 +28,14 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "POST") {
-    const { name, content, image_url, to } = req.body;
+    const { name, content, image_url, to = null } = req.body; // <-- garante 'to' mesmo null
 
     if (!name || !content) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    // Monta o corpo, incluindo "to" apenas se for fornecido
-    const body = { name, content };
+    const body = { name, content, to }; // <-- envia 'to' sempre, nullable
     if (image_url) body.image_url = image_url;
-    if (to) body.to = to;
 
     try {
       const response = await fetch(endpoint, {
