@@ -438,7 +438,7 @@ async function loadMessages() {
         data.forEach(msg => {
             const isWhisper = msg.to && (msg.to === loggedUser || msg.name === loggedUser);
 
-            // FILTRO REAL: sussurros só aparecem para quem deve ver
+            // FILTRO REAL: sussurros só aparecem para remetente ou destinatário
             if (msg.to && !isWhisper) return;
 
             const div = document.createElement('div');
@@ -587,6 +587,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
