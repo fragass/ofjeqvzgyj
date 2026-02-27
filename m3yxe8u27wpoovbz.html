@@ -454,7 +454,7 @@ div.innerHTML = `
         <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
         <span class="timestamp">${date}</span>
     </div>
-    <div>${contentHTML}</div>
+    <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
 `;
 
             box.appendChild(div);
@@ -585,6 +585,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
