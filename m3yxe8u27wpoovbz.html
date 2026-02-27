@@ -435,10 +435,10 @@ async function loadMessages() {
         box.innerHTML = '';
 
         data.forEach(msg => {
-            const isWhisper = msg.to && (msg.to === loggedUser || msg.name === loggedUser);
+            const isWhisper = !!msg.to;
+            const canSee = !isWhisper || msg.to === loggedUser || msg.name === loggedUser; // mensagem normal = todos veem, sussurro = só remetente/destinatário
 
-            // FILTRO REAL: sussurros só aparecem para remetente ou destinatário
-            if (msg.to && !isWhisper) return;
+            if (!canSee) return; // ignora sussurros que não são para o usuário
 
             const div = document.createElement('div');
             div.className = 'message' + (isWhisper ? ' whisper' : '');
@@ -492,7 +492,7 @@ async function sendMessage() {
                 name: loggedUser,
                 content: content || "🖼 Imagem",
                 image_url: pendingImageUrl,
-                to // destinatário da mensagem privada
+                to
             })
         });
 
@@ -586,6 +586,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
