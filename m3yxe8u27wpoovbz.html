@@ -245,6 +245,32 @@ button.send-btn:hover { background: #2ea043; transform: translateY(-1px); }
     color: #ffd700;
     font-weight: 700;
 }
+        /* Mensagens privadas */
+.message.whisper {
+    background: #fff5d1;
+    border-color: #ffd166;
+    color: #000;
+    font-style: italic;
+}
+
+/* Overlay de notificação */
+.overlay {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    opacity: 1;
+    transition: opacity 0.4s ease;
+    z-index: 9999;
+}
+
+.overlay.success { background: #3fb950; }
+.overlay.error { background: #da3633; }
+.overlay.info { background: #2c2c2c; }
     </style>
 </head>
 <body>
@@ -304,13 +330,7 @@ function getColorFromName(name) {
 }
 
 function escapeHTML(str) {
-    return str.replace(/[&<>"']/g, match => ({
-        '&':'&amp;',
-        '<':'&lt;',
-        '>':'&gt;',
-        '"':'&quot;',
-        "'":'&#039;'
-    })[match]);
+    return str.replace(/[&<>"']/g, match => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[match]));
 }
 
 function highlightMentions(text) {
@@ -378,15 +398,10 @@ document.addEventListener("DOMContentLoaded", () => {
 async function uploadImage(file) {
     const fileName = `${Date.now()}-${file.name}`;
     const formData = new FormData();
-
     formData.append("file", file);
     formData.append("fileName", fileName);
 
-    const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData
-    });
-
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
     const data = await res.json();
 
     if (data.url) {
@@ -395,6 +410,19 @@ async function uploadImage(file) {
         textarea.value += "\n🖼 [Imagem pronta para envio]";
         textarea.focus();
     }
+}
+
+/* =========================
+   PARSE SUSSURRO
+========================== */
+function parseWhisper(text) {
+    if (text.startsWith("/s ")) {
+        const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
+        if (match) {
+            return { to: match[1], content: match[2] };
+        }
+    }
+    return { to: null, content: text };
 }
 
 /* =========================
@@ -420,8 +448,12 @@ async function loadMessages() {
         box.innerHTML = '';
 
         data.forEach(msg => {
+            // filtrar sussurros
+            const isWhisper = msg.to && (msg.to === loggedUser || msg.name === loggedUser);
+            if (msg.to && !isWhisper) return; // mensagem privada não é para esse usuário
+
             const div = document.createElement('div');
-            div.className = 'message';
+            div.className = 'message' + (isWhisper ? ' whisper' : '');
 
             const date = new Date(msg.created_at).toLocaleString('pt-BR');
             const color = getColorFromName(msg.name);
@@ -437,6 +469,7 @@ async function loadMessages() {
                 </div>
                 <div>${contentHTML}</div>
             `;
+
             box.appendChild(div);
         });
 
@@ -447,16 +480,18 @@ async function loadMessages() {
 }
 
 /* =========================
-   ENVIO (ANTI DUPLICAÇÃO)
+   ENVIO (ANTI DUPLICAÇÃO + SUSSURRO)
 ========================== */
 async function sendMessage() {
     if (isSending) return;
 
     const contentInput = document.getElementById('content');
     const sendButton = document.querySelector(".send-btn");
-    const content = contentInput.value.trim();
+    const text = contentInput.value.trim();
 
-    if (!content && !pendingImageUrl) return;
+    if (!text && !pendingImageUrl) return;
+
+    const { to, content } = parseWhisper(text);
 
     isSending = true;
     sendButton.disabled = true;
@@ -470,21 +505,42 @@ async function sendMessage() {
             body: JSON.stringify({
                 name: loggedUser,
                 content: content || "🖼 Imagem",
-                image_url: pendingImageUrl
+                image_url: pendingImageUrl,
+                to // destinatário da mensagem privada
             })
         });
 
         contentInput.value = '';
         pendingImageUrl = null;
         await loadMessages();
+
+        // Overlay notificação de sussurro
+        if (to) showOverlay(`Mensagem privada enviada para @${to}`, "success");
+
     } catch (e) {
         console.error("Erro ao enviar mensagem:", e);
+        if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
     } finally {
         isSending = false;
         sendButton.disabled = false;
         sendButton.style.opacity = "1";
         sendButton.style.cursor = "pointer";
     }
+}
+
+/* =========================
+   OVERLAY DE NOTIFICAÇÃO
+========================== */
+function showOverlay(msg, type = "info") {
+    let overlay = document.createElement("div");
+    overlay.className = `overlay ${type}`;
+    overlay.textContent = msg;
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+        overlay.style.opacity = "0";
+        setTimeout(() => overlay.remove(), 400);
+    }, 2200);
 }
 
 /* =========================
@@ -512,20 +568,17 @@ async function loadOnlineUsers() {
    INIT
 ========================== */
 document.addEventListener("DOMContentLoaded", () => {
-    // set mini-profile username
     const miniProfile = document.getElementById("mini-profile");
     const dropdownMenu = document.getElementById("dropdown-menu");
     const arrow = document.getElementById("arrow");
     document.getElementById("user-phone").textContent = loggedUser;
 
-    // toggle dropdown
     miniProfile.onclick = () => {
         const open = dropdownMenu.style.display === "block";
         dropdownMenu.style.display = open ? "none" : "block";
         arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
     };
 
-    // hide dropdown clicando fora
     document.addEventListener("click", (e) => {
         if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
             dropdownMenu.style.display = "none";
@@ -533,13 +586,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // logout
     document.getElementById("logout").onclick = () => {
         sessionStorage.clear();
         window.location.href = "index.html";
     };
 
-    // enviar com ENTER
     document.getElementById("content").addEventListener("keydown", e => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -547,7 +598,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // carregar dados iniciais
     loadMessages();
     setInterval(loadMessages, 3000);
     updateOnlineStatus();
@@ -558,6 +608,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
