@@ -450,13 +450,13 @@ async function loadMessages() {
                 ? `<a href="${msg.image_url}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
                 : highlightMentions(msg.content);
 
-            div.innerHTML = `
-                <div class="message-header">
-                    <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
-                    <span class="timestamp">${date}</span>
-                </div>
-                <div>${isWhisper ? `<strong>[Sussurro]</strong> ${contentHTML}` : contentHTML}</div>
-            `;
+div.innerHTML = `
+    <div class="message-header">
+        <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
+        <span class="timestamp">${date}</span>
+    </div>
+    <div>${contentHTML}</div>
+`;
 
             box.appendChild(div);
         });
@@ -586,6 +586,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
