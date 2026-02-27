@@ -9,41 +9,58 @@ export default async function handler(req, res) {
   const endpoint = `${SUPABASE_URL}/rest/v1/messages`;
 
   if (req.method === "GET") {
-    const response = await fetch(
-      `${endpoint}?select=*&order=created_at.asc`,
-      {
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-      }
-    );
+    try {
+      const response = await fetch(
+        `${endpoint}?select=*&order=created_at.asc`,
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
 
-    const data = await response.json();
-    return res.status(response.status).json(data);
+      const data = await response.json();
+      return res.status(response.status).json(data);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   if (req.method === "POST") {
-    const { name, content, image_url } = req.body;
+    const { name, content, image_url, to } = req.body;
 
     if (!name || !content) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({ name, content, image_url }),
-    });
+    // Monta o corpo, incluindo "to" apenas se for fornecido
+    const body = { name, content };
+    if (image_url) body.image_url = image_url;
+    if (to) body.to = to;
 
-    return res.status(response.status).json({ success: true });
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(500).json({ error: errText });
+      }
+
+      return res.status(200).json({ success: true });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   return res.status(405).json({ error: "Method not allowed" });
 }
-
