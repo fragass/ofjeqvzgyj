@@ -424,7 +424,9 @@ function parseWhisper(text) {
 }
 
 /* MENSAGENS */
-async function loadMessages() {
+async function loadMessages(options = {}) {
+    const { forceScrollBottom = false } = options;
+
     try {
         const res = await fetch('/api/messages');
         const data = await res.json();
@@ -445,6 +447,11 @@ async function loadMessages() {
         }
 
         const box = document.getElementById('messages');
+        const previousScrollTop = box.scrollTop;
+        const previousScrollHeight = box.scrollHeight;
+        const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
+        const shouldAutoScroll = forceScrollBottom || distanceFromBottom < 80;
+
         box.innerHTML = '';
 
         data.forEach(msg => {
@@ -472,7 +479,12 @@ async function loadMessages() {
             box.appendChild(div);
         });
 
-        box.scrollTop = box.scrollHeight;
+        if (shouldAutoScroll) {
+            box.scrollTop = box.scrollHeight;
+        } else {
+            const heightDiff = box.scrollHeight - previousScrollHeight;
+            box.scrollTop = previousScrollTop + heightDiff;
+        }
     } catch (e) {
         console.error("Erro ao carregar mensagens:", e);
     }
@@ -509,7 +521,7 @@ async function sendMessage() {
 
         contentInput.value = '';
         pendingImageUrl = null;
-        await loadMessages();
+        await loadMessages({ forceScrollBottom: true });
 
         if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
     } catch (e) {
@@ -598,22 +610,3 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
