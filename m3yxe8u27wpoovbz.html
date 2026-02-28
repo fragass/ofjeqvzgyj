@@ -688,10 +688,6 @@ body {
 }
 
 
-.container + .container {
-    display: none;
-}
-
 .header {
     padding: 16px;
     font-size: 15px;
@@ -1068,6 +1064,21 @@ let isSending = false;
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
+/* NORMALIZAÇÃO DE UI (evita duplicação de blocos) */
+function keepOnlyFirst(selector) {
+    const items = document.querySelectorAll(selector);
+    items.forEach((item, index) => {
+        if (index > 0) item.remove();
+    });
+}
+
+function ensureSingleChatLayout() {
+    keepOnlyFirst('.container');
+    keepOnlyFirst('.online-box');
+    keepOnlyFirst('#mini-profile');
+    keepOnlyFirst('#dropdown-menu');
+}
+
 /* UTILIDADES */
 function getColorFromName(name) {
     let hash = 0;
@@ -1312,6 +1323,11 @@ async function loadOnlineUsers() {
 
 /* INIT */
 document.addEventListener("DOMContentLoaded", () => {
+    ensureSingleChatLayout();
+
+    const observer = new MutationObserver(() => ensureSingleChatLayout());
+    observer.observe(document.body, { childList: true, subtree: false });
+
     const miniProfile = document.getElementById("mini-profile");
     const dropdownMenu = document.getElementById("dropdown-menu");
     const arrow = document.getElementById("arrow");
