@@ -361,6 +361,28 @@ function highlightMentions(text) {
     });
 }
 
+/* SUSSURRO (FALTAVA) */
+function parseWhisper(text) {
+    if (text.startsWith("/s ")) {
+        const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
+        if (match) return { to: match[1], content: match[2] };
+    }
+    return { to: null, content: text };
+}
+
+/* OVERLAY (FALTAVA) */
+function showOverlay(msg, type = "info") {
+    const overlay = document.createElement("div");
+    overlay.className = `overlay ${type}`;
+    overlay.textContent = msg;
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+        overlay.style.opacity = "0";
+        setTimeout(() => overlay.remove(), 400);
+    }, 2000);
+}
+
 /* VISIBILIDADE */
 function canUserSeeMessage(msg) {
     if (!msg.to) return true;
@@ -404,17 +426,17 @@ async function loadMessages({ forceScrollBottom = false } = {}) {
             if (lastMessageId && lastVisible.id !== lastMessageId) {
                 const mentioned = lastVisible.content?.includes("@" + loggedUser);
                 if (lastVisible.name !== loggedUser || mentioned) {
-                    document.getElementById("messageSound").play();
+                    document.getElementById("messageSound")?.play();
                 }
             }
             lastMessageId = lastVisible.id;
         }
 
         const box = document.getElementById('messages');
-        const previousScrollTop = box.scrollTop;
-        const previousScrollHeight = box.scrollHeight;
-        const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
-        const shouldAutoScroll = forceScrollBottom || distanceFromBottom < 80;
+        const prevTop = box.scrollTop;
+        const prevHeight = box.scrollHeight;
+        const fromBottom = prevHeight - prevTop - box.clientHeight;
+        const autoScroll = forceScrollBottom || fromBottom < 80;
 
         box.innerHTML = '';
 
@@ -437,7 +459,7 @@ async function loadMessages({ forceScrollBottom = false } = {}) {
                 msg.last_seen_by &&
                 msg.last_seen_by !== msg.name
             )
-            ? `<span title="Visto por ${msg.last_seen_by}" style="margin-left:6px;cursor:default;opacity:.6">👁️</span>`
+            ? `<span title="Visto por ${msg.last_seen_by}" style="margin-left:6px;opacity:.6">👁️</span>`
             : "";
 
             div.innerHTML = `
@@ -449,37 +471,29 @@ async function loadMessages({ forceScrollBottom = false } = {}) {
                         ${date}${eyeHTML}
                     </span>
                 </div>
-                <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
+                <div>${isWhisper ? `<strong>Sussurro:</strong> ` : ""}${contentHTML}</div>
             `;
 
             box.appendChild(div);
         });
 
-        /* 👁️ MARCAR COMO VISTO (SEM SPAM) */
+        /* PATCH PROTEGIDO (NÃO QUEBRA) */
         if (visibleMessages.length) {
             const last = visibleMessages[visibleMessages.length - 1];
-
-            if (
-                last.name !== loggedUser &&
-                last.last_seen_by !== loggedUser
-            ) {
-                fetch('/api/messages', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        messageId: last.id,
-                        user: loggedUser
-                    })
-                });
+            if (last.name !== loggedUser && last.last_seen_by !== loggedUser) {
+                try {
+                    await fetch('/api/messages', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messageId: last.id, user: loggedUser })
+                    });
+                } catch {}
             }
         }
 
-        if (shouldAutoScroll) {
-            box.scrollTop = box.scrollHeight;
-        } else {
-            const heightDiff = box.scrollHeight - previousScrollHeight;
-            box.scrollTop = previousScrollTop + heightDiff;
-        }
+        if (autoScroll) box.scrollTop = box.scrollHeight;
+        else box.scrollTop = prevTop + (box.scrollHeight - prevHeight);
+
     } catch (e) {
         console.error("Erro ao carregar mensagens:", e);
     }
@@ -499,8 +513,6 @@ async function sendMessage() {
 
     isSending = true;
     sendButton.disabled = true;
-    sendButton.style.opacity = "0.6";
-    sendButton.style.cursor = "not-allowed";
 
     try {
         await fetch('/api/messages', {
@@ -520,13 +532,11 @@ async function sendMessage() {
 
         if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
     } catch (e) {
-        console.error("Erro ao enviar mensagem:", e);
-        if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
+        console.error(e);
+        if (to) showOverlay("Erro ao enviar sussurro", "error");
     } finally {
         isSending = false;
         sendButton.disabled = false;
-        sendButton.style.opacity = "1";
-        sendButton.style.cursor = "pointer";
     }
 }
 
@@ -539,6 +549,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
