@@ -1,3 +1,4 @@
+
 export default async function handler(req, res) {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -8,7 +9,6 @@ export default async function handler(req, res) {
 
   const endpoint = `${SUPABASE_URL}/rest/v1/messages`;
 
-  /* ===================== GET ===================== */
   if (req.method === "GET") {
     try {
       const response = await fetch(
@@ -28,15 +28,14 @@ export default async function handler(req, res) {
     }
   }
 
-  /* ===================== POST (ENVIAR MSG) ===================== */
   if (req.method === "POST") {
-    const { name, content, image_url, to = null } = req.body;
+    const { name, content, image_url, to = null } = req.body; // <-- garante 'to' mesmo null
 
     if (!name || !content) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const body = { name, content, to };
+    const body = { name, content, to }; // <-- envia 'to' sempre, nullable
     if (image_url) body.image_url = image_url;
 
     try {
@@ -62,38 +61,6 @@ export default async function handler(req, res) {
     }
   }
 
-  /* ===================== PATCH (SEEN) ===================== */
-  if (req.method === "PATCH") {
-    const { messageId, user } = req.body;
-
-    if (!messageId || !user) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
-
-    try {
-      const response = await fetch(`${endpoint}?id=eq.${messageId}`, {
-        method: "PATCH",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal",
-        },
-        body: JSON.stringify({
-          last_seen_by: user
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        return res.status(500).json({ error: errText });
-      }
-
-      return res.status(200).json({ success: true });
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  }
-
   return res.status(405).json({ error: "Method not allowed" });
 }
+
