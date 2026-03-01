@@ -361,10 +361,10 @@ function highlightMentions(text) {
     });
 }
 
-/* VISIBILIDADE DE MENSAGEM (CORREÇÃO) */
+/* VISIBILIDADE */
 function canUserSeeMessage(msg) {
-    if (!msg.to) return true; // mensagem normal
-    return msg.to === loggedUser || msg.name === loggedUser; // sussurro
+    if (!msg.to) return true;
+    return msg.to === loggedUser || msg.name === loggedUser;
 }
 
 /* EMOJIS */
@@ -390,63 +390,12 @@ function loadEmojis() {
 }
 loadEmojis();
 
-/* PASTE DE IMAGEM */
-document.addEventListener("DOMContentLoaded", () => {
-    const contentInput = document.getElementById("content");
-    if (!contentInput) return;
-
-    contentInput.addEventListener("paste", async (event) => {
-        const items = event.clipboardData?.items;
-        if (!items) return;
-
-        for (let item of items) {
-            if (item.type && item.type.includes("image")) {
-                const file = item.getAsFile();
-                if (file) {
-                    event.preventDefault();
-                    await uploadImage(file);
-                }
-            }
-        }
-    });
-});
-
-/* UPLOAD DE IMAGEM */
-async function uploadImage(file) {
-    const fileName = `${Date.now()}-${file.name}`;
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("fileName", fileName);
-
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await res.json();
-
-    if (data.url) {
-        pendingImageUrl = data.url;
-        const textarea = document.getElementById("content");
-        textarea.value += "\n🖼 [Imagem pronta para envio]";
-        textarea.focus();
-    }
-}
-
-/* PARSE SUSSURRO */
-function parseWhisper(text) {
-    if (text.startsWith("/s ")) {
-        const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
-        if (match) return { to: match[1], content: match[2] };
-    }
-    return { to: null, content: text };
-}
-
 /* MENSAGENS */
-async function loadMessages(options = {}) {
-    const { forceScrollBottom = false } = options;
-
+async function loadMessages({ forceScrollBottom = false } = {}) {
     try {
         const res = await fetch('/api/messages');
         const data = await res.json();
 
-        /* 🔔 NOTIFICAÇÃO CORRIGIDA */
         const visibleMessages = data.filter(msg => canUserSeeMessage(msg));
 
         if (visibleMessages.length) {
@@ -469,9 +418,9 @@ async function loadMessages(options = {}) {
 
         box.innerHTML = '';
 
-        data.forEach(msg => {
+        visibleMessages.forEach((msg, index) => {
             const isWhisper = msg.to !== null;
-            if (!canUserSeeMessage(msg)) return;
+            const isLast = index === visibleMessages.length - 1;
 
             const div = document.createElement('div');
             div.className = 'message' + (isWhisper ? ' whisper' : '');
@@ -483,16 +432,47 @@ async function loadMessages(options = {}) {
                 ? `<a href="${msg.image_url}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
                 : highlightMentions(msg.content);
 
+            const eyeHTML = (
+                isLast &&
+                msg.last_seen_by &&
+                msg.last_seen_by !== msg.name
+            )
+            ? `<span title="Visto por ${msg.last_seen_by}" style="margin-left:6px;cursor:default;opacity:.6">👁️</span>`
+            : "";
+
             div.innerHTML = `
                 <div class="message-header">
-                    <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
-                    <span class="timestamp">${date}</span>
+                    <span class="username" style="color:${color}">
+                        ${escapeHTML(msg.name)}
+                    </span>
+                    <span class="timestamp">
+                        ${date}${eyeHTML}
+                    </span>
                 </div>
                 <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
             `;
 
             box.appendChild(div);
         });
+
+        /* 👁️ MARCAR COMO VISTO (SEM SPAM) */
+        if (visibleMessages.length) {
+            const last = visibleMessages[visibleMessages.length - 1];
+
+            if (
+                last.name !== loggedUser &&
+                last.last_seen_by !== loggedUser
+            ) {
+                fetch('/api/messages', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messageId: last.id,
+                        user: loggedUser
+                    })
+                });
+            }
+        }
 
         if (shouldAutoScroll) {
             box.scrollTop = box.scrollHeight;
@@ -550,80 +530,15 @@ async function sendMessage() {
     }
 }
 
-/* OVERLAY */
-function showOverlay(msg, type = "info") {
-    const overlay = document.createElement("div");
-    overlay.className = `overlay ${type}`;
-    overlay.textContent = msg;
-    document.body.appendChild(overlay);
-
-    setTimeout(() => {
-        overlay.style.opacity = "0";
-        setTimeout(() => overlay.remove(), 400);
-    }, 2200);
-}
-
-/* ONLINE */
-async function updateOnlineStatus() {
-    if (!loggedUser) return;
-    await fetch('/api/online', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: loggedUser })
-    });
-}
-
-async function loadOnlineUsers() {
-    try {
-        const res = await fetch('/api/online');
-        const data = await res.json();
-        document.getElementById("onlineUsers").textContent =
-            Array.isArray(data) && data.length ? data.map(u => u.name).join(", ") : "0";
-    } catch {}
-}
-
 /* INIT */
 document.addEventListener("DOMContentLoaded", () => {
-    const miniProfile = document.getElementById("mini-profile");
-    const dropdownMenu = document.getElementById("dropdown-menu");
-    const arrow = document.getElementById("arrow");
-
     document.getElementById("user-phone").textContent = loggedUser;
-
-    miniProfile.onclick = () => {
-        const open = dropdownMenu.style.display === "block";
-        dropdownMenu.style.display = open ? "none" : "block";
-        arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
-    };
-
-    document.addEventListener("click", (e) => {
-        if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
-            dropdownMenu.style.display = "none";
-            arrow.style.transform = "rotate(0deg)";
-        }
-    });
-
-    document.getElementById("logout").onclick = () => {
-        sessionStorage.clear();
-        window.location.href = "index.html";
-    };
-
-    document.getElementById("content").addEventListener("keydown", e => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
     loadMessages();
     setInterval(loadMessages, 3000);
-    updateOnlineStatus();
-    setInterval(updateOnlineStatus, 5000);
-    loadOnlineUsers();
-    setInterval(loadOnlineUsers, 5000);
 });
 </script>
 </body>
 </html>
+
 
 
