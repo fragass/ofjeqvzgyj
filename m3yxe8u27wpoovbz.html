@@ -357,7 +357,9 @@ const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb",
 /* UTILIDADES */
 function getColorFromName(name) {
     let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
     return userColors[Math.abs(hash) % userColors.length];
 }
 
@@ -454,13 +456,24 @@ async function loadMessages() {
     }
 }
 
-/* ✉️ ENVIO — RESTAURADO */
+/* ✉️ ENVIO — COM SUPORTE A /s */
 async function sendMessage() {
     if (isSending) return;
 
     const input = document.getElementById("content");
-    const text = input.value.trim();
+    let text = input.value.trim();
     if (!text) return;
+
+    let to = null;
+
+    // 🔒 COMANDO /s @nome mensagem
+    if (text.startsWith("/s ")) {
+        const match = text.match(/^\/s\s+@(\w+)\s+(.+)/);
+        if (!match) return;
+
+        to = match[1];
+        text = match[2];
+    }
 
     isSending = true;
 
@@ -471,7 +484,7 @@ async function sendMessage() {
             body: JSON.stringify({
                 name: loggedUser,
                 content: text,
-                to: null
+                to
             })
         });
 
@@ -482,7 +495,7 @@ async function sendMessage() {
     }
 }
 
-/* ONLINE — LISTA DE NOMES */
+/* ONLINE */
 async function updateOnlineStatus() {
     if (!loggedUser) return;
     await fetch('/api/online', {
@@ -505,6 +518,26 @@ async function loadOnlineUsers() {
     }
 }
 
+/* 👤 MINIPROFILE */
+function initMiniProfile() {
+    const profile = document.getElementById("miniProfile");
+    const dropdown = document.getElementById("profileDropdown");
+    const arrow = document.getElementById("profileArrow");
+
+    if (!profile || !dropdown) return;
+
+    profile.addEventListener("click", e => {
+        e.stopPropagation();
+        dropdown.classList.toggle("open");
+        arrow?.classList.toggle("open");
+    });
+
+    document.addEventListener("click", () => {
+        dropdown.classList.remove("open");
+        arrow?.classList.remove("open");
+    });
+}
+
 /* INIT */
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("user-phone").textContent = loggedUser;
@@ -515,6 +548,8 @@ document.addEventListener("DOMContentLoaded", () => {
             sendMessage();
         }
     });
+
+    initMiniProfile();
 
     loadMessages();
     setInterval(loadMessages, 3000);
@@ -528,6 +563,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
