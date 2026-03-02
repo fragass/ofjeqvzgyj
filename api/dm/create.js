@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false });
   }
 
-  // Ordena para evitar duplicação (A+B = B+A)
+  // ordena para evitar duplicado
   const users = [from, to].sort();
 
   const { data: existing } = await supabase
@@ -34,7 +34,8 @@ export default async function handler(req, res) {
     .from("private_channels")
     .insert({
       user1: users[0],
-      user2: users[1]
+      user2: users[1],
+      last_activity: new Date().toISOString()
     })
     .select()
     .single();
@@ -43,5 +44,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false });
   }
 
-  res.json({ success: true, channel: data });
-} 
+  return res.json({ success: true, channel: data });
+}
