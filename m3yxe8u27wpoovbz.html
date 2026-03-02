@@ -336,266 +336,165 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 
 <script>
 const loggedUser = sessionStorage.getItem("loggedUser");
+let lastMessageId = null;
+let pendingImageUrl = null;
 let isSending = false;
 
-/* 🔹 ESTADO DM */
-let chatMode = "public";
-let currentDMChannel = null;
-let currentDMUser = null;
-
-/* 🔹 DOM REFS */
-const contentInput = document.getElementById("content");
-const messagesBox = document.getElementById("messages");
-const userPhoneEl = document.getElementById("user-phone");
-const onlineUsersEl = document.getElementById("onlineUsers");
-
-const userColors = [
-    "#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72",
-    "#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"
-];
+const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
 /* UTILIDADES */
-function getColorFromName(name){
+function getColorFromName(name) {
     let hash = 0;
-    for(let i = 0; i < name.length; i++){
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return userColors[Math.abs(hash) % userColors.length];
 }
 
-function escapeHTML(str){
-    return str.replace(/[&<>"']/g, m => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;",
-        "\"":"&quot;","'":"&#039;"
-    }[m]));
+function escapeHTML(str) {
+    return str.replace(/[&<>"']/g, match => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[match]));
 }
 
-function highlightMentions(text){
+function highlightMentions(text) {
     const escaped = escapeHTML(text);
-    return escaped.replace(/@(\w+)/g,(m,u)=>
-        u === loggedUser
-            ? `<span class="mention-self">@${u}</span>`
-            : `<span class="mention">@${u}</span>`
-    );
+    return escaped.replace(/@(\w+)/g, (match, username) => {
+        if (username === loggedUser) return `<span class="mention-self">@${username}</span>`;
+        return `<span class="mention">@${username}</span>`;
+    });
 }
 
 /* VISIBILIDADE */
-function canUserSeeMessage(msg){
-    if(!msg.to) return true;
+function canUserSeeMessage(msg) {
+    if (!msg.to) return true;
     return msg.to === loggedUser || msg.name === loggedUser;
 }
 
-/* PARSER */
-function parseInput(text){
-    if(text.startsWith("/c ")){
-        const m = text.match(/^\/c\s+@(\w+)$/);
-        if(m) return { type:"create_dm", user:m[1] };
-    }
-    if(text.startsWith("/entrar ")){
-        const m = text.match(/^\/entrar\s+@(\w+)$/);
-        if(m) return { type:"join_dm", user:m[1] };
-    }
-    if(text === "/sair"){
-        return { type:"exit_dm" };
-    }
-    if(text.startsWith("/s ")){
-        const m = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
-        if(m) return { type:"whisper", to:m[1], content:m[2] };
-    }
-    return { type:"normal", content:text };
+/* EMOJIS */
+function toggleEmojis() {
+    const panel = document.getElementById("emojiPanel");
+    panel.style.display = panel.style.display === "flex" ? "none" : "flex";
 }
 
-/* DM */
-async function openDM(user){
-    const r = await fetch("/api/dm/create",{
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ from: loggedUser, to: user })
+const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
+function loadEmojis() {
+    const panel = document.getElementById("emojiPanel");
+    panel.innerHTML = "";
+    emojis.forEach(emoji => {
+        const span = document.createElement("span");
+        span.textContent = emoji;
+        span.onclick = () => {
+            const textarea = document.getElementById("content");
+            textarea.value += emoji;
+            textarea.focus();
+        };
+        panel.appendChild(span);
     });
-
-    const d = await r.json();
-    if(!d.success) return;
-
-    chatMode = "dm";
-    currentDMChannel = d.channel.id;
-    currentDMUser = user;
-
-    showOverlay(`Chat privado com @${user}`);
-    loadMessages({ forceScrollBottom:true });
 }
+loadEmojis();
 
-function joinDM(user){
-    return openDM(user);
-}
+/* MENSAGENS */
+async function loadMessages(options = {}) {
+    try {
+        const res = await fetch('/api/messages');
+        if (!res.ok) return;
 
-function exitDM(){
-    chatMode = "public";
-    currentDMChannel = null;
-    currentDMUser = null;
-    showOverlay("Saiu do chat privado");
-    loadMessages({ forceScrollBottom:true });
-}
+        const data = await res.json();
+        const visible = data.filter(canUserSeeMessage);
 
-/* LOAD MESSAGES */
-async function loadMessages({ forceScrollBottom=false } = {}){
-    if(chatMode === "dm"){
-        const r = await fetch(`/api/dm/messages?channel_id=${currentDMChannel}`);
-        const d = await r.json();
-
-        messagesBox.innerHTML = "";
-        d.forEach(m=>{
-            const div = document.createElement("div");
-            div.className = "message";
-            div.innerHTML = `
-              <div class="message-header">
-                <span class="username" style="color:${getColorFromName(m.sender)}">
-                  ${escapeHTML(m.sender)}
-                </span>
-                <span class="timestamp">
-                  ${new Date(m.created_at).toLocaleString("pt-BR")}
-                </span>
-              </div>
-              <div>${escapeHTML(m.message)}</div>
-            `;
-            messagesBox.appendChild(div);
-        });
-
-        messagesBox.scrollTop = messagesBox.scrollHeight;
-        return;
-    }
-
-    const r = await fetch("/api/messages");
-    const data = await r.json();
-
-    messagesBox.innerHTML = "";
-    data.forEach(msg=>{
-        if(!canUserSeeMessage(msg)) return;
-
-        const div = document.createElement("div");
-        div.className = "message" + (msg.to ? " whisper" : "");
-        div.innerHTML = `
-          <div class="message-header">
-            <span class="username" style="color:${getColorFromName(msg.name)}">
-              ${escapeHTML(msg.name)}
-            </span>
-            <span class="timestamp">
-              ${new Date(msg.created_at).toLocaleString("pt-BR")}
-            </span>
-          </div>
-          <div>
-            ${msg.to ? "<strong>Sussurro:</strong> " : ""}
-            ${highlightMentions(msg.content)}
-          </div>
-        `;
-        messagesBox.appendChild(div);
-    });
-
-    if(forceScrollBottom){
-        messagesBox.scrollTop = messagesBox.scrollHeight;
-    }
-}
-
-/* LOAD ONLINE USERS (ISOLADO, SEGURO) */
-async function loadOnlineUsers(){
-    if(chatMode !== "public") return;
-
-    try{
-        const r = await fetch("/api/online");
-        const users = await r.json();
-
-        onlineUsersEl.innerHTML = "";
-
-        users.forEach(u=>{
-            const li = document.createElement("li");
-            li.textContent = u;
-            li.style.color = getColorFromName(u);
-            onlineUsersEl.appendChild(li);
-        });
-    }catch(e){
-        console.warn("Erro ao atualizar usuários online");
-    }
-}
-
-/* SEND */
-async function sendMessage(){
-    if(isSending) return;
-
-    const text = contentInput.value.trim();
-    if(!text) return;
-
-    const cmd = parseInput(text);
-    contentInput.value = "";
-
-    if(cmd.type === "create_dm") return openDM(cmd.user);
-    if(cmd.type === "join_dm") return joinDM(cmd.user);
-    if(cmd.type === "exit_dm") return exitDM();
-
-    isSending = true;
-    try{
-        if(chatMode === "dm"){
-            await fetch("/api/dm/send",{
-                method:"POST",
-                headers:{ "Content-Type":"application/json" },
-                body: JSON.stringify({
-                    channel_id: currentDMChannel,
-                    sender: loggedUser,
-                    message: text
-                })
-            });
-        } else {
-            await fetch("/api/messages",{
-                method:"POST",
-                headers:{ "Content-Type":"application/json" },
-                body: JSON.stringify({
-                    name: loggedUser,
-                    content: text,
-                    to: cmd.to || null
-                })
-            });
+        if (visible.length) {
+            const last = visible.at(-1);
+            if (lastMessageId && last.id !== lastMessageId) {
+                const mentioned = last.content?.includes("@" + loggedUser);
+                if (last.name !== loggedUser || mentioned) {
+                    document.getElementById("messageSound").play();
+                }
+            }
+            lastMessageId = last.id;
         }
-        loadMessages({ forceScrollBottom:true });
-    } finally {
-        isSending = false;
+
+        const box = document.getElementById('messages');
+        box.innerHTML = "";
+
+        visible.forEach(msg => {
+            const div = document.createElement('div');
+            div.className = 'message' + (msg.to ? ' whisper' : '');
+            const date = new Date(msg.created_at).toLocaleString('pt-BR');
+            const color = getColorFromName(msg.name);
+
+            const content = msg.image_url
+                ? `<a href="${msg.image_url}" target="_blank">🖼 Imagem</a>`
+                : highlightMentions(msg.content);
+
+            div.innerHTML = `
+                <div class="message-header">
+                    <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
+                    <span class="timestamp">${date}</span>
+                </div>
+                <div>${msg.to ? `<strong>Sussurro:</strong> ${content}` : content}</div>
+            `;
+            box.appendChild(div);
+        });
+
+        box.scrollTop = box.scrollHeight;
+    } catch (e) {
+        console.error("Erro ao carregar mensagens:", e);
     }
 }
 
-/* OVERLAY */
-function showOverlay(msg,type="info"){
-    const o = document.createElement("div");
-    o.className = `overlay ${type}`;
-    o.textContent = msg;
-    document.body.appendChild(o);
-    setTimeout(()=>{
-        o.style.opacity = 0;
-        setTimeout(()=>o.remove(),400);
-    },2200);
+/* ONLINE — CORRIGIDO SEM QUEBRAR */
+async function updateOnlineStatus() {
+    if (!loggedUser) return;
+    try {
+        await fetch('/api/online', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: loggedUser })
+        });
+    } catch {}
+}
+
+async function loadOnlineUsers() {
+    try {
+        const res = await fetch('/api/online');
+        if (!res.ok) {
+            document.getElementById("onlineUsers").textContent = "0";
+            return;
+        }
+
+        const data = await res.json();
+        if (!Array.isArray(data)) throw "invalid";
+
+        document.getElementById("onlineUsers").textContent =
+            data.length ? data.map(u => u.name).join(", ") : "0";
+    } catch {
+        document.getElementById("onlineUsers").textContent = "0";
+    }
 }
 
 /* INIT */
-document.addEventListener("DOMContentLoaded",()=>{
-    userPhoneEl.textContent = loggedUser;
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("user-phone").textContent = loggedUser;
 
-    contentInput.addEventListener("keydown",e=>{
-        if(e.key === "Enter" && !e.shiftKey){
+    document.getElementById("content").addEventListener("keydown", e => {
+        if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
-        }
-        if(e.key === "Escape" && chatMode === "dm"){
-            exitDM();
         }
     });
 
     loadMessages();
-    loadOnlineUsers();
+    setInterval(loadMessages, 3000);
 
-    setInterval(()=>{
-        loadMessages();
-        loadOnlineUsers();
-    },3000);
+    updateOnlineStatus();
+    setInterval(updateOnlineStatus, 5000);
+
+    loadOnlineUsers();
+    setInterval(loadOnlineUsers, 5000);
 });
 </script>
 </body>
 </html>
+
 
 
 
