@@ -379,42 +379,6 @@ function canUserSeeMessage(msg){
     return msg.to===loggedUser || msg.name===loggedUser;
 }
 
-/* EMOJIS */
-const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
-(function loadEmojis(){
-    const panel = document.getElementById("emojiPanel");
-    panel.innerHTML="";
-    emojis.forEach(e=>{
-        const s=document.createElement("span");
-        s.textContent=e;
-        s.onclick=()=>{ contentInput.value+=e; contentInput.focus(); };
-        panel.appendChild(s);
-    });
-})();
-
-/* IMAGEM */
-document.addEventListener("DOMContentLoaded",()=>{
-    contentInput.addEventListener("paste",async e=>{
-        for (let i of e.clipboardData.items){
-            if(i.type.includes("image")){
-                e.preventDefault();
-                await uploadImage(i.getAsFile());
-            }
-        }
-    });
-});
-async function uploadImage(file){
-    const fd=new FormData();
-    fd.append("file",file);
-    fd.append("fileName",`${Date.now()}-${file.name}`);
-    const r=await fetch("/api/upload",{method:"POST",body:fd});
-    const d=await r.json();
-    if(d.url){
-        pendingImageUrl=d.url;
-        contentInput.value+="\n🖼 [Imagem pronta para envio]";
-    }
-}
-
 /* PARSER */
 function parseInput(text){
     if(text.startsWith("/c ")){
@@ -450,28 +414,18 @@ async function openDM(user){
     currentDMUser=user;
 
     showOverlay(`Chat privado com @${user}`);
-
-    /* 🔔 NOTIFICA A OUTRA PESSOA */
-    await fetch("/api/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            name: loggedUser,
-            to: user,
-            content: `💬 iniciou um chat privado com você. Digite /entrar @${loggedUser} para entrar.`
-        })
-    });
-
     loadMessages({forceScrollBottom:true});
 }
 
 async function joinDM(user){
-    const r=await fetch("/api/dm/join",{
+    // 🔹 cria ou recupera o canal
+    const r = await fetch("/api/dm/create",{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({from:loggedUser,to:user})
     });
-    const d=await r.json();
+
+    const d = await r.json();
     if(!d.success) return;
 
     chatMode="dm";
@@ -493,7 +447,7 @@ function exitDM(){
 /* LOAD */
 async function loadMessages({forceScrollBottom=false}={}){
     if(chatMode==="dm"){
-        const r=await fetch(`/api/dm/messages?channel_id=${currentDMChannel}`);
+        const r=await fetch(`/api/dm/message?channel_id=${currentDMChannel}`);
         const d=await r.json();
         messagesBox.innerHTML="";
         d.forEach(m=>{
@@ -547,7 +501,7 @@ async function sendMessage(){
     isSending=true;
     try{
         if(chatMode==="dm"){
-            await fetch("/api/dm/send",{
+            await fetch("/api/dm/join",{
                 method:"POST",
                 headers:{"Content-Type":"application/json"},
                 body:JSON.stringify({
@@ -585,17 +539,6 @@ function showOverlay(msg,type="info"){
     setTimeout(()=>{o.style.opacity=0;setTimeout(()=>o.remove(),400)},2200);
 }
 
-/* ONLINE */
-async function updateOnlineStatus(){
-    if(loggedUser)
-        await fetch("/api/online",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:loggedUser})});
-}
-async function loadOnlineUsers(){
-    const r=await fetch("/api/online");
-    const d=await r.json();
-    onlineUsersEl.textContent = Array.isArray(d)&&d.length ? d.map(u=>u.name).join(", ") : "0";
-}
-
 /* INIT */
 document.addEventListener("DOMContentLoaded",()=>{
     userPhoneEl.textContent = loggedUser;
@@ -607,14 +550,11 @@ document.addEventListener("DOMContentLoaded",()=>{
 
     loadMessages();
     setInterval(loadMessages,3000);
-    updateOnlineStatus();
-    setInterval(updateOnlineStatus,5000);
-    loadOnlineUsers();
-    setInterval(loadOnlineUsers,5000);
 });
 </script>
 </body>
 </html>
+
 
 
 
