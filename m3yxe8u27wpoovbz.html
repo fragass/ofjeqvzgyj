@@ -341,9 +341,15 @@ let pendingImageUrl = null;
 let isSending = false;
 
 /* 🔹 ESTADO DM */
-let chatMode = "public"; // public | dm
+let chatMode = "public";
 let currentDMChannel = null;
 let currentDMUser = null;
+
+/* 🔹 DOM REFS (FIX CRÍTICO) */
+const contentInput = document.getElementById("content");
+const messagesBox = document.getElementById("messages");
+const onlineUsersEl = document.getElementById("onlineUsers");
+const userPhoneEl = document.getElementById("user-phone");
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
@@ -376,11 +382,6 @@ function canUserSeeMessage(msg) {
 }
 
 /* EMOJIS */
-function toggleEmojis() {
-    const panel = document.getElementById("emojiPanel");
-    panel.style.display = panel.style.display === "flex" ? "none" : "flex";
-}
-
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
 (function loadEmojis(){
     const panel = document.getElementById("emojiPanel");
@@ -388,15 +389,14 @@ const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","
     emojis.forEach(e=>{
         const s=document.createElement("span");
         s.textContent=e;
-        s.onclick=()=>{ content.value+=e; content.focus(); };
+        s.onclick=()=>{ contentInput.value+=e; contentInput.focus(); };
         panel.appendChild(s);
     });
 })();
 
 /* IMAGEM */
 document.addEventListener("DOMContentLoaded",()=>{
-    const input=document.getElementById("content");
-    input.addEventListener("paste",async e=>{
+    contentInput.addEventListener("paste",async e=>{
         for (let i of e.clipboardData.items){
             if (i.type.includes("image")){
                 e.preventDefault();
@@ -414,7 +414,7 @@ async function uploadImage(file){
     const d=await r.json();
     if(d.url){
         pendingImageUrl=d.url;
-        content.value+="\n🖼 [Imagem pronta para envio]";
+        contentInput.value+="\n🖼 [Imagem pronta para envio]";
     }
 }
 
@@ -458,12 +458,10 @@ function exitDM(){
 
 /* LOAD */
 async function loadMessages({forceScrollBottom=false}={}){
-    const box=document.getElementById("messages");
-
     if(chatMode==="dm"){
         const r=await fetch(`/api/dm/messages?channel_id=${currentDMChannel}`);
         const d=await r.json();
-        box.innerHTML="";
+        messagesBox.innerHTML="";
         d.forEach(m=>{
             const div=document.createElement("div");
             div.className="message";
@@ -473,9 +471,9 @@ async function loadMessages({forceScrollBottom=false}={}){
                 <span class="timestamp">${new Date(m.created_at).toLocaleString("pt-BR")}</span>
               </div>
               <div>${escapeHTML(m.message)}</div>`;
-            box.appendChild(div);
+            messagesBox.appendChild(div);
         });
-        box.scrollTop=box.scrollHeight;
+        messagesBox.scrollTop=messagesBox.scrollHeight;
         return;
     }
 
@@ -492,7 +490,7 @@ async function loadMessages({forceScrollBottom=false}={}){
         lastMessageId=last.id;
     }
 
-    box.innerHTML="";
+    messagesBox.innerHTML="";
     data.forEach(msg=>{
         if(!canUserSeeMessage(msg))return;
         const div=document.createElement("div");
@@ -507,21 +505,22 @@ async function loadMessages({forceScrollBottom=false}={}){
               ? `<a href="${msg.image_url}" target="_blank">🖼 Imagem</a>`
               : highlightMentions(msg.content)
           }</div>`;
-        box.appendChild(div);
+        messagesBox.appendChild(div);
     });
-    if(forceScrollBottom) box.scrollTop=box.scrollHeight;
+
+    if(forceScrollBottom) messagesBox.scrollTop=messagesBox.scrollHeight;
 }
 
 /* SEND */
 async function sendMessage(){
     if(isSending)return;
-    const text=content.value.trim();
+    const text=contentInput.value.trim();
     if(!text && !pendingImageUrl)return;
 
     const cmd=parseInput(text);
 
     if(cmd.type==="dm"){
-        content.value="";
+        contentInput.value="";
         return openDM(cmd.user);
     }
 
@@ -553,7 +552,7 @@ async function sendMessage(){
             if(payload.to) showOverlay(`Sussurro enviado para @${payload.to}`,"success");
         }
 
-        content.value="";
+        contentInput.value="";
         pendingImageUrl=null;
         loadMessages({forceScrollBottom:true});
     } finally {
@@ -579,14 +578,14 @@ async function updateOnlineStatus(){
 async function loadOnlineUsers(){
     const r=await fetch("/api/online");
     const d=await r.json();
-    onlineUsers.textContent=Array.isArray(d)&&d.length?d.map(u=>u.name).join(", "):"0";
+    onlineUsersEl.textContent = Array.isArray(d)&&d.length ? d.map(u=>u.name).join(", ") : "0";
 }
 
 /* INIT */
 document.addEventListener("DOMContentLoaded",()=>{
-    user-phone.textContent=loggedUser;
+    userPhoneEl.textContent = loggedUser;
 
-    content.addEventListener("keydown",e=>{
+    contentInput.addEventListener("keydown",e=>{
         if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}
         if(e.key==="Escape"&&chatMode==="dm") exitDM();
     });
@@ -601,6 +600,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 </script>
 </body>
 </html>
+
 
 
 
