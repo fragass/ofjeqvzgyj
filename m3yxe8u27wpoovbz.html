@@ -340,6 +340,11 @@ let lastMessageId = null;
 let pendingImageUrl = null;
 let isSending = false;
 
+/* 🔹 ESTADO DM */
+let chatMode = "public"; // public | dm
+let currentDMChannel = null;
+let currentDMUser = null;
+
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
 /* UTILIDADES */
@@ -350,23 +355,24 @@ function getColorFromName(name) {
 }
 
 function escapeHTML(str) {
-    return str.replace(/[&<>"']/g, match => ({
+    return str.replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-    }[match]));
+    }[m]));
 }
 
 function highlightMentions(text) {
     const escaped = escapeHTML(text);
-    return escaped.replace(/@(\w+)/g, (match, username) => {
-        if (username === loggedUser) return `<span class="mention-self">@${username}</span>`;
-        return `<span class="mention">@${username}</span>`;
-    });
+    return escaped.replace(/@(\w+)/g, (m, u) =>
+        u === loggedUser
+            ? `<span class="mention-self">@${u}</span>`
+            : `<span class="mention">@${u}</span>`
+    );
 }
 
-/* VISIBILIDADE DE MENSAGEM (CORREÇÃO) */
+/* VISIBILIDADE */
 function canUserSeeMessage(msg) {
-    if (!msg.to) return true; // mensagem normal
-    return msg.to === loggedUser || msg.name === loggedUser; // sussurro
+    if (!msg.to) return true;
+    return msg.to === loggedUser || msg.name === loggedUser;
 }
 
 /* EMOJIS */
@@ -376,257 +382,226 @@ function toggleEmojis() {
 }
 
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
-function loadEmojis() {
+(function loadEmojis(){
     const panel = document.getElementById("emojiPanel");
     panel.innerHTML = "";
-    emojis.forEach(emoji => {
-        const span = document.createElement("span");
-        span.textContent = emoji;
-        span.onclick = () => {
-            const textarea = document.getElementById("content");
-            textarea.value += emoji;
-            textarea.focus();
-        };
-        panel.appendChild(span);
+    emojis.forEach(e=>{
+        const s=document.createElement("span");
+        s.textContent=e;
+        s.onclick=()=>{ content.value+=e; content.focus(); };
+        panel.appendChild(s);
     });
-}
-loadEmojis();
+})();
 
-/* PASTE DE IMAGEM */
-document.addEventListener("DOMContentLoaded", () => {
-    const contentInput = document.getElementById("content");
-    if (!contentInput) return;
-
-    contentInput.addEventListener("paste", async (event) => {
-        const items = event.clipboardData?.items;
-        if (!items) return;
-
-        for (let item of items) {
-            if (item.type && item.type.includes("image")) {
-                const file = item.getAsFile();
-                if (file) {
-                    event.preventDefault();
-                    await uploadImage(file);
-                }
+/* IMAGEM */
+document.addEventListener("DOMContentLoaded",()=>{
+    const input=document.getElementById("content");
+    input.addEventListener("paste",async e=>{
+        for (let i of e.clipboardData.items){
+            if (i.type.includes("image")){
+                e.preventDefault();
+                await uploadImage(i.getAsFile());
             }
         }
     });
 });
 
-/* UPLOAD DE IMAGEM */
-async function uploadImage(file) {
-    const fileName = `${Date.now()}-${file.name}`;
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("fileName", fileName);
-
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await res.json();
-
-    if (data.url) {
-        pendingImageUrl = data.url;
-        const textarea = document.getElementById("content");
-        textarea.value += "\n🖼 [Imagem pronta para envio]";
-        textarea.focus();
+async function uploadImage(file){
+    const fd=new FormData();
+    fd.append("file",file);
+    fd.append("fileName",`${Date.now()}-${file.name}`);
+    const r=await fetch("/api/upload",{method:"POST",body:fd});
+    const d=await r.json();
+    if(d.url){
+        pendingImageUrl=d.url;
+        content.value+="\n🖼 [Imagem pronta para envio]";
     }
 }
 
-/* PARSE SUSSURRO */
-function parseWhisper(text) {
-    if (text.startsWith("/s ")) {
-        const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
-        if (match) return { to: match[1], content: match[2] };
+/* PARSER */
+function parseInput(text){
+    if(text.startsWith("/c ")){
+        const m=text.match(/^\/c\s+@(\w+)$/);
+        if(m) return {type:"dm",user:m[1]};
     }
-    return { to: null, content: text };
+    if(text.startsWith("/s ")){
+        const m=text.match(/^\/s\s+@(\w+)\s+(.+)$/);
+        if(m) return {type:"whisper",to:m[1],content:m[2]};
+    }
+    return {type:"normal",content:text};
 }
 
-/* MENSAGENS */
-async function loadMessages(options = {}) {
-    const { forceScrollBottom = false } = options;
+/* DM */
+async function openDM(user){
+    const r=await fetch("/api/dm/create",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({from:loggedUser,to:user})
+    });
+    const d=await r.json();
+    if(d.success){
+        chatMode="dm";
+        currentDMChannel=d.channel.id;
+        currentDMUser=user;
+        showOverlay(`Chat privado com @${user}`);
+        loadMessages({forceScrollBottom:true});
+    }
+}
 
-    try {
-        const res = await fetch('/api/messages');
-        const data = await res.json();
+function exitDM(){
+    chatMode="public";
+    currentDMChannel=null;
+    currentDMUser=null;
+    showOverlay("Voltando ao chat público");
+    loadMessages({forceScrollBottom:true});
+}
 
-        /* 🔔 NOTIFICAÇÃO CORRIGIDA */
-        const visibleMessages = data.filter(msg => canUserSeeMessage(msg));
+/* LOAD */
+async function loadMessages({forceScrollBottom=false}={}){
+    const box=document.getElementById("messages");
 
-        if (visibleMessages.length) {
-            const lastVisible = visibleMessages[visibleMessages.length - 1];
-
-            if (lastMessageId && lastVisible.id !== lastMessageId) {
-                const mentioned = lastVisible.content?.includes("@" + loggedUser);
-                if (lastVisible.name !== loggedUser || mentioned) {
-                    document.getElementById("messageSound").play();
-                }
-            }
-            lastMessageId = lastVisible.id;
-        }
-
-        const box = document.getElementById('messages');
-        const previousScrollTop = box.scrollTop;
-        const previousScrollHeight = box.scrollHeight;
-        const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
-        const shouldAutoScroll = forceScrollBottom || distanceFromBottom < 80;
-
-        box.innerHTML = '';
-
-        data.forEach(msg => {
-            const isWhisper = msg.to !== null;
-            if (!canUserSeeMessage(msg)) return;
-
-            const div = document.createElement('div');
-            div.className = 'message' + (isWhisper ? ' whisper' : '');
-
-            const date = new Date(msg.created_at).toLocaleString('pt-BR');
-            const color = getColorFromName(msg.name);
-
-            const contentHTML = msg.image_url
-                ? `<a href="${msg.image_url}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
-                : highlightMentions(msg.content);
-
-            div.innerHTML = `
-                <div class="message-header">
-                    <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
-                    <span class="timestamp">${date}</span>
-                </div>
-                <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
-            `;
-
+    if(chatMode==="dm"){
+        const r=await fetch(`/api/dm/messages?channel_id=${currentDMChannel}`);
+        const d=await r.json();
+        box.innerHTML="";
+        d.forEach(m=>{
+            const div=document.createElement("div");
+            div.className="message";
+            div.innerHTML=`
+              <div class="message-header">
+                <span class="username">${escapeHTML(m.sender)}</span>
+                <span class="timestamp">${new Date(m.created_at).toLocaleString("pt-BR")}</span>
+              </div>
+              <div>${escapeHTML(m.message)}</div>`;
             box.appendChild(div);
         });
-
-        if (shouldAutoScroll) {
-            box.scrollTop = box.scrollHeight;
-        } else {
-            const heightDiff = box.scrollHeight - previousScrollHeight;
-            box.scrollTop = previousScrollTop + heightDiff;
-        }
-    } catch (e) {
-        console.error("Erro ao carregar mensagens:", e);
+        box.scrollTop=box.scrollHeight;
+        return;
     }
+
+    const r=await fetch("/api/messages");
+    const data=await r.json();
+    const visible=data.filter(canUserSeeMessage);
+
+    if(visible.length){
+        const last=visible.at(-1);
+        if(lastMessageId && last.id!==lastMessageId){
+            if(last.name!==loggedUser || last.content?.includes("@"+loggedUser))
+                document.getElementById("messageSound").play();
+        }
+        lastMessageId=last.id;
+    }
+
+    box.innerHTML="";
+    data.forEach(msg=>{
+        if(!canUserSeeMessage(msg))return;
+        const div=document.createElement("div");
+        div.className="message"+(msg.to?" whisper":"");
+        div.innerHTML=`
+          <div class="message-header">
+            <span class="username" style="color:${getColorFromName(msg.name)}">${escapeHTML(msg.name)}</span>
+            <span class="timestamp">${new Date(msg.created_at).toLocaleString("pt-BR")}</span>
+          </div>
+          <div>${msg.to?"<strong>Sussurro:</strong> ":""}${
+            msg.image_url
+              ? `<a href="${msg.image_url}" target="_blank">🖼 Imagem</a>`
+              : highlightMentions(msg.content)
+          }</div>`;
+        box.appendChild(div);
+    });
+    if(forceScrollBottom) box.scrollTop=box.scrollHeight;
 }
 
-/* ENVIO */
-async function sendMessage() {
-    if (isSending) return;
+/* SEND */
+async function sendMessage(){
+    if(isSending)return;
+    const text=content.value.trim();
+    if(!text && !pendingImageUrl)return;
 
-    const contentInput = document.getElementById('content');
-    const sendButton = document.querySelector(".send-btn");
-    const text = contentInput.value.trim();
+    const cmd=parseInput(text);
 
-    if (!text && !pendingImageUrl) return;
+    if(cmd.type==="dm"){
+        content.value="";
+        return openDM(cmd.user);
+    }
 
-    const { to, content } = parseWhisper(text);
+    isSending=true;
 
-    isSending = true;
-    sendButton.disabled = true;
-    sendButton.style.opacity = "0.6";
-    sendButton.style.cursor = "not-allowed";
+    try{
+        if(chatMode==="dm"){
+            await fetch("/api/dm/send",{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({
+                    channel_id:currentDMChannel,
+                    sender:loggedUser,
+                    message:text||"🖼 Imagem"
+                })
+            });
+        } else {
+            const payload=cmd.type==="whisper"?cmd:{to:null,content:text};
+            await fetch("/api/messages",{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({
+                    name:loggedUser,
+                    content:payload.content||"🖼 Imagem",
+                    image_url:pendingImageUrl,
+                    to:payload.to
+                })
+            });
+            if(payload.to) showOverlay(`Sussurro enviado para @${payload.to}`,"success");
+        }
 
-    try {
-        await fetch('/api/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: loggedUser,
-                content: content || "🖼 Imagem",
-                image_url: pendingImageUrl,
-                to
-            })
-        });
-
-        contentInput.value = '';
-        pendingImageUrl = null;
-        await loadMessages({ forceScrollBottom: true });
-
-        if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
-    } catch (e) {
-        console.error("Erro ao enviar mensagem:", e);
-        if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
+        content.value="";
+        pendingImageUrl=null;
+        loadMessages({forceScrollBottom:true});
     } finally {
-        isSending = false;
-        sendButton.disabled = false;
-        sendButton.style.opacity = "1";
-        sendButton.style.cursor = "pointer";
+        isSending=false;
     }
 }
 
 /* OVERLAY */
-function showOverlay(msg, type = "info") {
-    const overlay = document.createElement("div");
-    overlay.className = `overlay ${type}`;
-    overlay.textContent = msg;
-    document.body.appendChild(overlay);
-
-    setTimeout(() => {
-        overlay.style.opacity = "0";
-        setTimeout(() => overlay.remove(), 400);
-    }, 2200);
+function showOverlay(msg,type="info"){
+    const o=document.createElement("div");
+    o.className=`overlay ${type}`;
+    o.textContent=msg;
+    document.body.appendChild(o);
+    setTimeout(()=>{o.style.opacity=0;setTimeout(()=>o.remove(),400)},2200);
 }
 
 /* ONLINE */
-async function updateOnlineStatus() {
-    if (!loggedUser) return;
-    await fetch('/api/online', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: loggedUser })
-    });
+async function updateOnlineStatus(){
+    if(loggedUser)
+        await fetch("/api/online",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:loggedUser})});
 }
 
-async function loadOnlineUsers() {
-    try {
-        const res = await fetch('/api/online');
-        const data = await res.json();
-        document.getElementById("onlineUsers").textContent =
-            Array.isArray(data) && data.length ? data.map(u => u.name).join(", ") : "0";
-    } catch {}
+async function loadOnlineUsers(){
+    const r=await fetch("/api/online");
+    const d=await r.json();
+    onlineUsers.textContent=Array.isArray(d)&&d.length?d.map(u=>u.name).join(", "):"0";
 }
 
 /* INIT */
-document.addEventListener("DOMContentLoaded", () => {
-    const miniProfile = document.getElementById("mini-profile");
-    const dropdownMenu = document.getElementById("dropdown-menu");
-    const arrow = document.getElementById("arrow");
+document.addEventListener("DOMContentLoaded",()=>{
+    user-phone.textContent=loggedUser;
 
-    document.getElementById("user-phone").textContent = loggedUser;
-
-    miniProfile.onclick = () => {
-        const open = dropdownMenu.style.display === "block";
-        dropdownMenu.style.display = open ? "none" : "block";
-        arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
-    };
-
-    document.addEventListener("click", (e) => {
-        if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
-            dropdownMenu.style.display = "none";
-            arrow.style.transform = "rotate(0deg)";
-        }
-    });
-
-    document.getElementById("logout").onclick = () => {
-        sessionStorage.clear();
-        window.location.href = "index.html";
-    };
-
-    document.getElementById("content").addEventListener("keydown", e => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
+    content.addEventListener("keydown",e=>{
+        if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}
+        if(e.key==="Escape"&&chatMode==="dm") exitDM();
     });
 
     loadMessages();
-    setInterval(loadMessages, 3000);
+    setInterval(loadMessages,3000);
     updateOnlineStatus();
-    setInterval(updateOnlineStatus, 5000);
+    setInterval(updateOnlineStatus,5000);
     loadOnlineUsers();
-    setInterval(loadOnlineUsers, 5000);
+    setInterval(loadOnlineUsers,5000);
 });
 </script>
 </body>
 </html>
+
 
 
 
