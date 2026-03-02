@@ -27,5 +27,5 @@ export default async function handler(req, res) {
     .update({ last_activity: new Date().toISOString() })
     .eq("id", channel_id);
 
-  res.json({ success: true });
+  return res.json({ success: true });
 }
