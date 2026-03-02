@@ -336,27 +336,22 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 
 <script>
 /* 🔐 LOGGED USER — CORREÇÃO DEFINITIVA */
-let loggedUser = null;
+let loggedUser = sessionStorage.getItem("loggedUser");
 
-(function () {
-    const raw = sessionStorage.getItem("loggedUser");
-    if (!raw) return;
-
-    try {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object" && parsed.name) {
-            loggedUser = parsed.name;
-        } else {
-            loggedUser = raw;
-        }
-    } catch {
-        loggedUser = raw;
+try {
+    const parsed = JSON.parse(loggedUser);
+    if (parsed && typeof parsed === "object" && parsed.name) {
+        loggedUser = parsed.name;
     }
-})();
+} catch {}
+
+if (!loggedUser) {
+    loggedUser = "Guest_" + Math.floor(Math.random() * 9999);
+}
 
 /* =============================== */
 
-/* 🔔 OVERLAY FLUTUANTE (IGUAL AO DA PRINT) */
+/* 🔔 OVERLAY FLUTUANTE */
 function showOverlay(message) {
     if (!message) return;
 
@@ -366,9 +361,7 @@ function showOverlay(message) {
 
     document.body.appendChild(overlay);
 
-    setTimeout(() => {
-        overlay.classList.add("show");
-    }, 10);
+    setTimeout(() => overlay.classList.add("show"), 10);
 
     setTimeout(() => {
         overlay.classList.remove("show");
@@ -425,6 +418,7 @@ function highlightMentions(text) {
 function canUserSeeMessage(msg) {
     if (!msg) return false;
     if (!msg.to) return true;
+    if (!loggedUser) return true;
     return msg.to === loggedUser || msg.name === loggedUser;
 }
 
@@ -472,8 +466,6 @@ async function loadPrivateMessages() {
         box.innerHTML = "";
 
         data.forEach(msg => {
-            if (!msg) return;
-
             const div = document.createElement('div');
             div.className = 'message';
 
@@ -517,7 +509,7 @@ async function loadMessages() {
             const last = visible[visible.length - 1];
 
             if (lastMessageId && last.id !== lastMessageId) {
-                const mentioned = last.content && loggedUser
+                const mentioned = last.content
                     ? last.content.includes("@" + loggedUser)
                     : false;
 
@@ -536,8 +528,6 @@ async function loadMessages() {
         box.innerHTML = "";
 
         visible.forEach(msg => {
-            if (!msg) return;
-
             const div = document.createElement('div');
             div.className = 'message' + (msg.to ? ' whisper' : '');
             const date = msg.created_at
@@ -569,7 +559,6 @@ async function loadMessages() {
 /* ✉️ ENVIO */
 async function sendMessage() {
     if (isSending) return;
-    if (!loggedUser) return;
 
     const input = document.getElementById("content");
     if (!input) return;
@@ -581,64 +570,8 @@ async function sendMessage() {
 
     try {
 
-        if (text.startsWith("/c ")) {
-            const match = text.match(/^\/c\s+@(\w+)/);
-            if (!match) return;
-
-            const target = match[1];
-
-            const res = await fetch("/api/dm/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ from: loggedUser, to: target })
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                currentPrivateChannel = data.channel.id;
-                currentPrivateUser = target;
-                showOverlay(`Você iniciou conversa com @${target}`);
-            }
-
-            input.value = "";
-            loadMessages();
-            return;
-        }
-
-        if (text.startsWith("/entrar ")) {
-            const match = text.match(/^\/entrar\s+@(\w+)/);
-            if (!match) return;
-
-            const target = match[1];
-
-            const res = await fetch("/api/dm/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ from: loggedUser, to: target })
-            });
-
-            const data = await res.json();
-            if (data.success) {
-                currentPrivateChannel = data.channel.id;
-                currentPrivateUser = target;
-                showOverlay(`Você entrou na conversa com @${target}`);
-            }
-
-            input.value = "";
-            loadMessages();
-            return;
-        }
-
-        if (text === "/sair") {
-            currentPrivateChannel = null;
-            currentPrivateUser = null;
-            showOverlay("Você saiu da conversa privada");
-            input.value = "";
-            loadMessages();
-            return;
-        }
-
         let to = null;
+
         if (text.startsWith("/s ")) {
             const match = text.match(/^\/s\s+@(\w+)\s+(.+)/);
             if (!match) return;
@@ -667,6 +600,7 @@ async function sendMessage() {
 </script>
 </body>
 </html>
+
 
 
 
