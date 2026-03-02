@@ -441,7 +441,7 @@ async function loadMessages(options = {}) {
     }
 }
 
-/* ONLINE — CORRIGIDO SEM QUEBRAR */
+/* ONLINE — CONTADOR CORRIGIDO */
 async function updateOnlineStatus() {
     if (!loggedUser) return;
     try {
@@ -464,8 +464,8 @@ async function loadOnlineUsers() {
         const data = await res.json();
         if (!Array.isArray(data)) throw "invalid";
 
-        document.getElementById("onlineUsers").textContent =
-            data.length ? data.map(u => u.name).join(", ") : "0";
+        // 🔢 agora é contador, não lista
+        document.getElementById("onlineUsers").textContent = data.length;
     } catch {
         document.getElementById("onlineUsers").textContent = "0";
     }
@@ -494,6 +494,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
