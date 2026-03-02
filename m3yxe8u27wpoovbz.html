@@ -336,8 +336,6 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 
 <script>
 const loggedUser = sessionStorage.getItem("loggedUser");
-let lastMessageId = null;
-let pendingImageUrl = null;
 let isSending = false;
 
 /* 🔹 ESTADO DM */
@@ -348,7 +346,6 @@ let currentDMUser = null;
 /* 🔹 DOM REFS */
 const contentInput = document.getElementById("content");
 const messagesBox = document.getElementById("messages");
-const onlineUsersEl = document.getElementById("onlineUsers");
 const userPhoneEl = document.getElementById("user-phone");
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
@@ -356,7 +353,9 @@ const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb",
 /* UTILIDADES */
 function getColorFromName(name){
     let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
     return userColors[Math.abs(hash) % userColors.length];
 }
 function escapeHTML(str){
@@ -367,7 +366,7 @@ function escapeHTML(str){
 function highlightMentions(text){
     const escaped = escapeHTML(text);
     return escaped.replace(/@(\w+)/g,(m,u)=>
-        u===loggedUser
+        u === loggedUser
             ? `<span class="mention-self">@${u}</span>`
             : `<span class="mention">@${u}</span>`
     );
@@ -376,167 +375,173 @@ function highlightMentions(text){
 /* VISIBILIDADE */
 function canUserSeeMessage(msg){
     if(!msg.to) return true;
-    return msg.to===loggedUser || msg.name===loggedUser;
+    return msg.to === loggedUser || msg.name === loggedUser;
 }
 
 /* PARSER */
 function parseInput(text){
     if(text.startsWith("/c ")){
-        const m=text.match(/^\/c\s+@(\w+)$/);
-        if(m) return {type:"create_dm",user:m[1]};
+        const m = text.match(/^\/c\s+@(\w+)$/);
+        if(m) return { type:"create_dm", user:m[1] };
     }
     if(text.startsWith("/entrar ")){
-        const m=text.match(/^\/entrar\s+@(\w+)$/);
-        if(m) return {type:"join_dm",user:m[1]};
+        const m = text.match(/^\/entrar\s+@(\w+)$/);
+        if(m) return { type:"join_dm", user:m[1] };
     }
-    if(text==="/sair"){
-        return {type:"exit_dm"};
+    if(text === "/sair"){
+        return { type:"exit_dm" };
     }
     if(text.startsWith("/s ")){
-        const m=text.match(/^\/s\s+@(\w+)\s+(.+)$/);
-        if(m) return {type:"whisper",to:m[1],content:m[2]};
+        const m = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
+        if(m) return { type:"whisper", to:m[1], content:m[2] };
     }
-    return {type:"normal",content:text};
+    return { type:"normal", content:text };
 }
 
 /* DM */
 async function openDM(user){
-    const r=await fetch("/api/dm/create",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({from:loggedUser,to:user})
-    });
-    const d=await r.json();
-    if(!d.success) return;
-
-    chatMode="dm";
-    currentDMChannel=d.channel.id;
-    currentDMUser=user;
-
-    showOverlay(`Chat privado com @${user}`);
-    loadMessages({forceScrollBottom:true});
-}
-
-async function joinDM(user){
-    // 🔹 cria ou recupera o canal
     const r = await fetch("/api/dm/create",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({from:loggedUser,to:user})
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ from: loggedUser, to: user })
     });
 
     const d = await r.json();
     if(!d.success) return;
 
-    chatMode="dm";
-    currentDMChannel=d.channel.id;
-    currentDMUser=user;
+    chatMode = "dm";
+    currentDMChannel = d.channel.id;
+    currentDMUser = user;
 
-    showOverlay(`Entrou no chat privado com @${user}`);
-    loadMessages({forceScrollBottom:true});
+    showOverlay(`Chat privado com @${user}`);
+    loadMessages({ forceScrollBottom:true });
+}
+
+async function joinDM(user){
+    // /entrar apenas reabre ou cria o canal
+    return openDM(user);
 }
 
 function exitDM(){
-    chatMode="public";
-    currentDMChannel=null;
-    currentDMUser=null;
+    chatMode = "public";
+    currentDMChannel = null;
+    currentDMUser = null;
     showOverlay("Saiu do chat privado");
-    loadMessages({forceScrollBottom:true});
+    loadMessages({ forceScrollBottom:true });
 }
 
 /* LOAD */
-async function loadMessages({forceScrollBottom=false}={}){
-    if(chatMode==="dm"){
-        const r=await fetch(`/api/dm/message?channel_id=${currentDMChannel}`);
-        const d=await r.json();
-        messagesBox.innerHTML="";
+async function loadMessages({ forceScrollBottom=false } = {}){
+    if(chatMode === "dm"){
+        const r = await fetch(`/api/dm/messages?channel_id=${currentDMChannel}`);
+        const d = await r.json();
+
+        messagesBox.innerHTML = "";
         d.forEach(m=>{
-            const div=document.createElement("div");
-            div.className="message";
-            div.innerHTML=`
+            const div = document.createElement("div");
+            div.className = "message";
+            div.innerHTML = `
               <div class="message-header">
-                <span class="username" style="color:${getColorFromName(m.sender)}">${escapeHTML(m.sender)}</span>
-                <span class="timestamp">${new Date(m.created_at).toLocaleString("pt-BR")}</span>
+                <span class="username" style="color:${getColorFromName(m.sender)}">
+                  ${escapeHTML(m.sender)}
+                </span>
+                <span class="timestamp">
+                  ${new Date(m.created_at).toLocaleString("pt-BR")}
+                </span>
               </div>
-              <div>${escapeHTML(m.message)}</div>`;
+              <div>${escapeHTML(m.message)}</div>
+            `;
             messagesBox.appendChild(div);
         });
-        messagesBox.scrollTop=messagesBox.scrollHeight;
+
+        messagesBox.scrollTop = messagesBox.scrollHeight;
         return;
     }
 
-    const r=await fetch("/api/messages");
-    const data=await r.json();
+    const r = await fetch("/api/messages");
+    const data = await r.json();
 
-    messagesBox.innerHTML="";
+    messagesBox.innerHTML = "";
     data.forEach(msg=>{
         if(!canUserSeeMessage(msg)) return;
-        const div=document.createElement("div");
-        div.className="message"+(msg.to?" whisper":"");
-        div.innerHTML=`
+
+        const div = document.createElement("div");
+        div.className = "message" + (msg.to ? " whisper" : "");
+        div.innerHTML = `
           <div class="message-header">
-            <span class="username" style="color:${getColorFromName(msg.name)}">${escapeHTML(msg.name)}</span>
-            <span class="timestamp">${new Date(msg.created_at).toLocaleString("pt-BR")}</span>
+            <span class="username" style="color:${getColorFromName(msg.name)}">
+              ${escapeHTML(msg.name)}
+            </span>
+            <span class="timestamp">
+              ${new Date(msg.created_at).toLocaleString("pt-BR")}
+            </span>
           </div>
-          <div>${msg.to?"<strong>Sussurro:</strong> ":""}${highlightMentions(msg.content)}</div>`;
+          <div>
+            ${msg.to ? "<strong>Sussurro:</strong> " : ""}
+            ${highlightMentions(msg.content)}
+          </div>
+        `;
         messagesBox.appendChild(div);
     });
 
-    if(forceScrollBottom) messagesBox.scrollTop=messagesBox.scrollHeight;
+    if(forceScrollBottom) {
+        messagesBox.scrollTop = messagesBox.scrollHeight;
+    }
 }
 
 /* SEND */
 async function sendMessage(){
     if(isSending) return;
-    const text=contentInput.value.trim();
-    if(!text && !pendingImageUrl) return;
 
-    const cmd=parseInput(text);
-    contentInput.value="";
+    const text = contentInput.value.trim();
+    if(!text) return;
 
-    if(cmd.type==="create_dm") return openDM(cmd.user);
-    if(cmd.type==="join_dm") return joinDM(cmd.user);
-    if(cmd.type==="exit_dm") return exitDM();
+    const cmd = parseInput(text);
+    contentInput.value = "";
 
-    isSending=true;
+    if(cmd.type === "create_dm") return openDM(cmd.user);
+    if(cmd.type === "join_dm") return joinDM(cmd.user);
+    if(cmd.type === "exit_dm") return exitDM();
+
+    isSending = true;
     try{
-        if(chatMode==="dm"){
-            await fetch("/api/dm/join",{
+        if(chatMode === "dm"){
+            await fetch("/api/dm/send",{
                 method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({
-                    channel_id:currentDMChannel,
-                    sender:loggedUser,
-                    message:text||"🖼 Imagem"
+                headers:{ "Content-Type":"application/json" },
+                body: JSON.stringify({
+                    channel_id: currentDMChannel,
+                    sender: loggedUser,
+                    message: text
                 })
             });
         } else {
             await fetch("/api/messages",{
                 method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({
-                    name:loggedUser,
-                    content:text,
-                    image_url:pendingImageUrl,
-                    to:cmd.to||null
+                headers:{ "Content-Type":"application/json" },
+                body: JSON.stringify({
+                    name: loggedUser,
+                    content: text,
+                    to: cmd.to || null
                 })
             });
-            if(cmd.to) showOverlay(`Sussurro enviado para @${cmd.to}`,"success");
         }
-        pendingImageUrl=null;
-        loadMessages({forceScrollBottom:true});
+        loadMessages({ forceScrollBottom:true });
     } finally {
-        isSending=false;
+        isSending = false;
     }
 }
 
 /* OVERLAY */
 function showOverlay(msg,type="info"){
-    const o=document.createElement("div");
-    o.className=`overlay ${type}`;
-    o.textContent=msg;
+    const o = document.createElement("div");
+    o.className = `overlay ${type}`;
+    o.textContent = msg;
     document.body.appendChild(o);
-    setTimeout(()=>{o.style.opacity=0;setTimeout(()=>o.remove(),400)},2200);
+    setTimeout(()=>{
+        o.style.opacity = 0;
+        setTimeout(()=>o.remove(),400);
+    },2200);
 }
 
 /* INIT */
@@ -544,8 +549,13 @@ document.addEventListener("DOMContentLoaded",()=>{
     userPhoneEl.textContent = loggedUser;
 
     contentInput.addEventListener("keydown",e=>{
-        if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}
-        if(e.key==="Escape"&&chatMode==="dm") exitDM();
+        if(e.key === "Enter" && !e.shiftKey){
+            e.preventDefault();
+            sendMessage();
+        }
+        if(e.key === "Escape" && chatMode === "dm"){
+            exitDM();
+        }
     });
 
     loadMessages();
@@ -554,6 +564,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 </script>
 </body>
 </html>
+
 
 
 
