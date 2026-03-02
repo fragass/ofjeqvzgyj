@@ -335,209 +335,154 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
     </div>
 
 <script>
-/* 🔐 LOGGED USER — CORREÇÃO DEFINITIVA */
-let loggedUser = sessionStorage.getItem("loggedUser");
-
-try {
-    const parsed = JSON.parse(loggedUser);
-    if (parsed && typeof parsed === "object" && parsed.name) {
-        loggedUser = parsed.name;
-    }
-} catch {}
-
-if (!loggedUser) {
-    loggedUser = "Guest_" + Math.floor(Math.random() * 9999);
-}
-
-/* =============================== */
-
-/* 🔔 OVERLAY FLUTUANTE */
-function showOverlay(message) {
-    if (!message) return;
-
-    const overlay = document.createElement("div");
-    overlay.className = "overlay-notification";
-    overlay.textContent = message;
-
-    document.body.appendChild(overlay);
-
-    setTimeout(() => overlay.classList.add("show"), 10);
-
-    setTimeout(() => {
-        overlay.classList.remove("show");
-        setTimeout(() => {
-            if (overlay.parentNode) overlay.remove();
-        }, 300);
-    }, 3000);
-}
-
-/* =============================== */
-
+const loggedUser = sessionStorage.getItem("loggedUser");
 let lastMessageId = null;
 let pendingImageUrl = null;
 let isSending = false;
-
-/* 🔒 DM STATE */
-let currentPrivateChannel = null;
-let currentPrivateUser = null;
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
 /* UTILIDADES */
 function getColorFromName(name) {
-    if (!name) return "#ccc";
     let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return userColors[Math.abs(hash) % userColors.length];
 }
 
 function escapeHTML(str) {
-    if (!str) return "";
-    return str.replace(/[&<>"']/g, m => ({
-        "&":"&amp;",
-        "<":"&lt;",
-        ">":"&gt;",
-        "\"":"&quot;",
-        "'":"&#039;"
-    }[m]));
+    return str.replace(/[&<>"']/g, match => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[match]));
 }
 
 function highlightMentions(text) {
-    if (!text) return "";
     const escaped = escapeHTML(text);
-    return escaped.replace(/@(\w+)/g, (m, u) =>
-        u === loggedUser
-            ? `<span class="mention-self">@${u}</span>`
-            : `<span class="mention">@${u}</span>`
-    );
+    return escaped.replace(/@(\w+)/g, (match, username) => {
+        if (username === loggedUser) return `<span class="mention-self">@${username}</span>`;
+        return `<span class="mention">@${username}</span>`;
+    });
 }
 
-/* VISIBILIDADE */
+/* VISIBILIDADE DE MENSAGEM (CORREÇÃO) */
 function canUserSeeMessage(msg) {
-    if (!msg) return false;
-    if (!msg.to) return true;
-    if (!loggedUser) return true;
-    return msg.to === loggedUser || msg.name === loggedUser;
+    if (!msg.to) return true; // mensagem normal
+    return msg.to === loggedUser || msg.name === loggedUser; // sussurro
 }
 
 /* EMOJIS */
 function toggleEmojis() {
     const panel = document.getElementById("emojiPanel");
-    if (!panel) return;
     panel.style.display = panel.style.display === "flex" ? "none" : "flex";
 }
 
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
-
 function loadEmojis() {
     const panel = document.getElementById("emojiPanel");
-    if (!panel) return;
-
     panel.innerHTML = "";
-    emojis.forEach(e => {
-        const s = document.createElement("span");
-        s.textContent = e;
-        s.onclick = () => {
-            const t = document.getElementById("content");
-            if (!t) return;
-            t.value += e;
-            t.focus();
+    emojis.forEach(emoji => {
+        const span = document.createElement("span");
+        span.textContent = emoji;
+        span.onclick = () => {
+            const textarea = document.getElementById("content");
+            textarea.value += emoji;
+            textarea.focus();
         };
-        panel.appendChild(s);
+        panel.appendChild(span);
     });
 }
 loadEmojis();
 
-/* ================= PRIVATE MESSAGES ================= */
+/* PASTE DE IMAGEM */
+document.addEventListener("DOMContentLoaded", () => {
+    const contentInput = document.getElementById("content");
+    if (!contentInput) return;
 
-async function loadPrivateMessages() {
-    if (!currentPrivateChannel) return;
+    contentInput.addEventListener("paste", async (event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return;
 
-    try {
-        const res = await fetch(`/api/dm/messages?channel_id=${currentPrivateChannel}`);
-        if (!res.ok) return;
+        for (let item of items) {
+            if (item.type && item.type.includes("image")) {
+                const file = item.getAsFile();
+                if (file) {
+                    event.preventDefault();
+                    await uploadImage(file);
+                }
+            }
+        }
+    });
+});
 
-        const data = await res.json();
-        const box = document.getElementById('messages');
-        if (!box) return;
+/* UPLOAD DE IMAGEM */
+async function uploadImage(file) {
+    const fileName = `${Date.now()}-${file.name}`;
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("fileName", fileName);
 
-        box.innerHTML = "";
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await res.json();
 
-        data.forEach(msg => {
-            const div = document.createElement('div');
-            div.className = 'message';
+    if (data.url) {
+        pendingImageUrl = data.url;
+        const textarea = document.getElementById("content");
+        textarea.value += "\n🖼 [Imagem pronta para envio]";
+        textarea.focus();
+    }
+}
 
-            const date = msg.created_at
-                ? new Date(msg.created_at).toLocaleString('pt-BR')
-                : "";
-
-            const color = getColorFromName(msg.sender);
-
-            div.innerHTML = `
-                <div class="message-header">
-                    <span class="username" style="color:${color}">${escapeHTML(msg.sender)}</span>
-                    <span class="timestamp">${date}</span>
-                </div>
-                <div>${highlightMentions(msg.message)}</div>
-            `;
-            box.appendChild(div);
-        });
-
-        box.scrollTop = box.scrollHeight;
-    } catch {}
+/* PARSE SUSSURRO */
+function parseWhisper(text) {
+    if (text.startsWith("/s ")) {
+        const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
+        if (match) return { to: match[1], content: match[2] };
+    }
+    return { to: null, content: text };
 }
 
 /* MENSAGENS */
-async function loadMessages() {
-    if (currentPrivateChannel) {
-        loadPrivateMessages();
-        return;
-    }
+async function loadMessages(options = {}) {
+    const { forceScrollBottom = false } = options;
 
     try {
         const res = await fetch('/api/messages');
-        if (!res.ok) return;
-
         const data = await res.json();
-        if (!Array.isArray(data)) return;
 
-        const visible = data.filter(canUserSeeMessage);
+        /* 🔔 NOTIFICAÇÃO CORRIGIDA */
+        const visibleMessages = data.filter(msg => canUserSeeMessage(msg));
 
-        if (visible.length > 0) {
-            const last = visible[visible.length - 1];
+        if (visibleMessages.length) {
+            const lastVisible = visibleMessages[visibleMessages.length - 1];
 
-            if (lastMessageId && last.id !== lastMessageId) {
-                const mentioned = last.content
-                    ? last.content.includes("@" + loggedUser)
-                    : false;
-
-                if (last.name !== loggedUser || mentioned) {
-                    const sound = document.getElementById("messageSound");
-                    if (sound) sound.play();
+            if (lastMessageId && lastVisible.id !== lastMessageId) {
+                const mentioned = lastVisible.content?.includes("@" + loggedUser);
+                if (lastVisible.name !== loggedUser || mentioned) {
+                    document.getElementById("messageSound").play();
                 }
             }
-
-            lastMessageId = last.id;
+            lastMessageId = lastVisible.id;
         }
 
         const box = document.getElementById('messages');
-        if (!box) return;
+        const previousScrollTop = box.scrollTop;
+        const previousScrollHeight = box.scrollHeight;
+        const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
+        const shouldAutoScroll = forceScrollBottom || distanceFromBottom < 80;
 
-        box.innerHTML = "";
+        box.innerHTML = '';
 
-        visible.forEach(msg => {
+        data.forEach(msg => {
+            const isWhisper = msg.to !== null;
+            if (!canUserSeeMessage(msg)) return;
+
             const div = document.createElement('div');
-            div.className = 'message' + (msg.to ? ' whisper' : '');
-            const date = msg.created_at
-                ? new Date(msg.created_at).toLocaleString('pt-BR')
-                : "";
+            div.className = 'message' + (isWhisper ? ' whisper' : '');
 
+            const date = new Date(msg.created_at).toLocaleString('pt-BR');
             const color = getColorFromName(msg.name);
 
-            const content = msg.image_url
-                ? `<a href="${msg.image_url}" target="_blank">🖼 Imagem</a>`
+            const contentHTML = msg.image_url
+                ? `<a href="${msg.image_url}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
                 : highlightMentions(msg.content);
 
             div.innerHTML = `
@@ -545,61 +490,159 @@ async function loadMessages() {
                     <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
                     <span class="timestamp">${date}</span>
                 </div>
-                <div>${msg.to ? `<strong>Sussurro:</strong> ${content}` : content}</div>
+                <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
             `;
+
             box.appendChild(div);
         });
 
-        box.scrollTop = box.scrollHeight;
+        if (shouldAutoScroll) {
+            box.scrollTop = box.scrollHeight;
+        } else {
+            const heightDiff = box.scrollHeight - previousScrollHeight;
+            box.scrollTop = previousScrollTop + heightDiff;
+        }
     } catch (e) {
-        console.error(e);
+        console.error("Erro ao carregar mensagens:", e);
     }
 }
 
-/* ✉️ ENVIO */
+/* ENVIO */
 async function sendMessage() {
     if (isSending) return;
 
-    const input = document.getElementById("content");
-    if (!input) return;
+    const contentInput = document.getElementById('content');
+    const sendButton = document.querySelector(".send-btn");
+    const text = contentInput.value.trim();
 
-    let text = input.value.trim();
-    if (!text) return;
+    if (!text && !pendingImageUrl) return;
+
+    const { to, content } = parseWhisper(text);
 
     isSending = true;
+    sendButton.disabled = true;
+    sendButton.style.opacity = "0.6";
+    sendButton.style.cursor = "not-allowed";
 
     try {
-
-        let to = null;
-
-        if (text.startsWith("/s ")) {
-            const match = text.match(/^\/s\s+@(\w+)\s+(.+)/);
-            if (!match) return;
-            to = match[1];
-            text = match[2];
-            showOverlay(`Sussurro enviado para @${to}`);
-        }
-
-        await fetch("/api/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+        await fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name: loggedUser,
-                content: text,
+                content: content || "🖼 Imagem",
+                image_url: pendingImageUrl,
                 to
             })
         });
 
-        input.value = "";
-        loadMessages();
+        contentInput.value = '';
+        pendingImageUrl = null;
+        await loadMessages({ forceScrollBottom: true });
 
+        if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
+    } catch (e) {
+        console.error("Erro ao enviar mensagem:", e);
+        if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
     } finally {
         isSending = false;
+        sendButton.disabled = false;
+        sendButton.style.opacity = "1";
+        sendButton.style.cursor = "pointer";
     }
 }
+
+/* OVERLAY */
+function showOverlay(msg, type = "info") {
+    const overlay = document.createElement("div");
+    overlay.className = `overlay ${type}`;
+    overlay.textContent = msg;
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+        overlay.style.opacity = "0";
+        setTimeout(() => overlay.remove(), 400);
+    }, 2200);
+}
+
+/* ONLINE */
+async function updateOnlineStatus() {
+    if (!loggedUser) return;
+    await fetch('/api/online', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: loggedUser })
+    });
+}
+
+async function loadOnlineUsers() {
+    try {
+        const res = await fetch('/api/online');
+        const data = await res.json();
+        document.getElementById("onlineUsers").textContent =
+            Array.isArray(data) && data.length ? data.map(u => u.name).join(", ") : "0";
+    } catch {}
+}
+
+/* INIT */
+document.addEventListener("DOMContentLoaded", () => {
+    const miniProfile = document.getElementById("mini-profile");
+    const dropdownMenu = document.getElementById("dropdown-menu");
+    const arrow = document.getElementById("arrow");
+
+    document.getElementById("user-phone").textContent = loggedUser;
+
+    miniProfile.onclick = () => {
+        const open = dropdownMenu.style.display === "block";
+        dropdownMenu.style.display = open ? "none" : "block";
+        arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
+    };
+
+    document.addEventListener("click", (e) => {
+        if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
+            dropdownMenu.style.display = "none";
+            arrow.style.transform = "rotate(0deg)";
+        }
+    });
+
+    document.getElementById("logout").onclick = () => {
+        sessionStorage.clear();
+        window.location.href = "index.html";
+    };
+
+    document.getElementById("content").addEventListener("keydown", e => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    loadMessages();
+    setInterval(loadMessages, 3000);
+    updateOnlineStatus();
+    setInterval(updateOnlineStatus, 5000);
+    loadOnlineUsers();
+    setInterval(loadOnlineUsers, 5000);
+});
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
