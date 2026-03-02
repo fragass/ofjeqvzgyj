@@ -6,17 +6,24 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  const { channel_id } = req.query;
-
-  if (!channel_id) {
-    return res.json([]);
+  if (req.method !== "GET") {
+    return res.status(405).json([]);
   }
 
-  const { data } = await supabase
+  const { channel_id } = req.query;
+  if (!channel_id) {
+    return res.status(400).json([]);
+  }
+
+  const { data, error } = await supabase
     .from("private_messages")
     .select("*")
     .eq("channel_id", channel_id)
     .order("created_at", { ascending: true });
 
-  return res.json(data || []);
+  if (error) {
+    return res.status(500).json([]);
+  }
+
+  res.status(200).json(data || []);
 }
