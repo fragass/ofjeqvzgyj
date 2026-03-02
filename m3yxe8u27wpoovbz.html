@@ -348,22 +348,22 @@ try {
 
 /* =============================== */
 
-/* 🔔 OVERLAY ORIGINAL */
-function showOverlay(msg, type = "info") {
-    const overlay = document.createElement("div");
-    overlay.className = "overlay-notification " + type;
-    overlay.textContent = msg;
+/* 🔔 OVERLAY ORIGINAL (EXATAMENTE IGUAL) */
+function showOverlay(message, buttonText = "OK") {
+    const overlay = document.getElementById("overlay");
+    const overlayText = document.getElementById("overlayText");
+    const overlayBtn = document.getElementById("overlayBtn");
 
-    document.body.appendChild(overlay);
+    if (!overlay || !overlayText || !overlayBtn) return;
 
-    setTimeout(() => {
-        overlay.classList.add("show");
-    }, 10);
+    overlayText.textContent = message;
+    overlayBtn.textContent = buttonText;
 
-    setTimeout(() => {
-        overlay.classList.remove("show");
-        setTimeout(() => overlay.remove(), 300);
-    }, 3000);
+    overlay.style.display = "flex";
+
+    overlayBtn.onclick = () => {
+        overlay.style.display = "none";
+    };
 }
 
 /* =============================== */
@@ -530,7 +530,6 @@ async function sendMessage() {
 
     try {
 
-        // /c @nome
         if (text.startsWith("/c ")) {
             const match = text.match(/^\/c\s+@(\w+)/);
             if (!match) return;
@@ -547,7 +546,7 @@ async function sendMessage() {
             if (data.success) {
                 currentPrivateChannel = data.channel.id;
                 currentPrivateUser = target;
-                showOverlay(`Você iniciou conversa com @${target}`, "info");
+                showOverlay(`Você iniciou conversa com @${target}`);
             }
 
             input.value = "";
@@ -555,7 +554,6 @@ async function sendMessage() {
             return;
         }
 
-        // /entrar @nome
         if (text.startsWith("/entrar ")) {
             const match = text.match(/^\/entrar\s+@(\w+)/);
             if (!match) return;
@@ -572,7 +570,7 @@ async function sendMessage() {
             if (data.success) {
                 currentPrivateChannel = data.channel.id;
                 currentPrivateUser = target;
-                showOverlay(`Você entrou na conversa com @${target}`, "info");
+                showOverlay(`Você entrou na conversa com @${target}`);
             }
 
             input.value = "";
@@ -580,24 +578,22 @@ async function sendMessage() {
             return;
         }
 
-        // /sair
         if (text === "/sair") {
             currentPrivateChannel = null;
             currentPrivateUser = null;
-            showOverlay("Você saiu da conversa privada", "info");
+            showOverlay("Você saiu da conversa privada");
             input.value = "";
             loadMessages();
             return;
         }
 
-        // GLOBAL /s @nome
         let to = null;
         if (text.startsWith("/s ")) {
             const match = text.match(/^\/s\s+@(\w+)\s+(.+)/);
             if (!match) return;
             to = match[1];
             text = match[2];
-            showOverlay(`Sussurro enviado para @${to}`, "info");
+            showOverlay(`Sussurro enviado para @${to}`);
         }
 
         await fetch("/api/messages", {
@@ -686,4 +682,5 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
