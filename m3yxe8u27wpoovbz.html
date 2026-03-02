@@ -345,7 +345,7 @@ let chatMode = "public";
 let currentDMChannel = null;
 let currentDMUser = null;
 
-/* 🔹 DOM REFS (FIX CRÍTICO) */
+/* 🔹 DOM REFS */
 const contentInput = document.getElementById("content");
 const messagesBox = document.getElementById("messages");
 const onlineUsersEl = document.getElementById("onlineUsers");
@@ -354,38 +354,36 @@ const userPhoneEl = document.getElementById("user-phone");
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
 /* UTILIDADES */
-function getColorFromName(name) {
+function getColorFromName(name){
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return userColors[Math.abs(hash) % userColors.length];
 }
-
-function escapeHTML(str) {
+function escapeHTML(str){
     return str.replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
     }[m]));
 }
-
-function highlightMentions(text) {
+function highlightMentions(text){
     const escaped = escapeHTML(text);
-    return escaped.replace(/@(\w+)/g, (m, u) =>
-        u === loggedUser
+    return escaped.replace(/@(\w+)/g,(m,u)=>
+        u===loggedUser
             ? `<span class="mention-self">@${u}</span>`
             : `<span class="mention">@${u}</span>`
     );
 }
 
 /* VISIBILIDADE */
-function canUserSeeMessage(msg) {
-    if (!msg.to) return true;
-    return msg.to === loggedUser || msg.name === loggedUser;
+function canUserSeeMessage(msg){
+    if(!msg.to) return true;
+    return msg.to===loggedUser || msg.name===loggedUser;
 }
 
 /* EMOJIS */
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
 (function loadEmojis(){
     const panel = document.getElementById("emojiPanel");
-    panel.innerHTML = "";
+    panel.innerHTML="";
     emojis.forEach(e=>{
         const s=document.createElement("span");
         s.textContent=e;
@@ -398,14 +396,13 @@ const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","
 document.addEventListener("DOMContentLoaded",()=>{
     contentInput.addEventListener("paste",async e=>{
         for (let i of e.clipboardData.items){
-            if (i.type.includes("image")){
+            if(i.type.includes("image")){
                 e.preventDefault();
                 await uploadImage(i.getAsFile());
             }
         }
     });
 });
-
 async function uploadImage(file){
     const fd=new FormData();
     fd.append("file",file);
@@ -422,7 +419,14 @@ async function uploadImage(file){
 function parseInput(text){
     if(text.startsWith("/c ")){
         const m=text.match(/^\/c\s+@(\w+)$/);
-        if(m) return {type:"dm",user:m[1]};
+        if(m) return {type:"create_dm",user:m[1]};
+    }
+    if(text.startsWith("/entrar ")){
+        const m=text.match(/^\/entrar\s+@(\w+)$/);
+        if(m) return {type:"join_dm",user:m[1]};
+    }
+    if(text==="/sair"){
+        return {type:"exit_dm"};
     }
     if(text.startsWith("/s ")){
         const m=text.match(/^\/s\s+@(\w+)\s+(.+)$/);
@@ -439,20 +443,50 @@ async function openDM(user){
         body:JSON.stringify({from:loggedUser,to:user})
     });
     const d=await r.json();
-    if(d.success){
-        chatMode="dm";
-        currentDMChannel=d.channel.id;
-        currentDMUser=user;
-        showOverlay(`Chat privado com @${user}`);
-        loadMessages({forceScrollBottom:true});
-    }
+    if(!d.success) return;
+
+    chatMode="dm";
+    currentDMChannel=d.channel.id;
+    currentDMUser=user;
+
+    showOverlay(`Chat privado com @${user}`);
+
+    /* 🔔 NOTIFICA A OUTRA PESSOA */
+    await fetch("/api/messages",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+            name: loggedUser,
+            to: user,
+            content: `💬 iniciou um chat privado com você. Digite /entrar @${loggedUser} para entrar.`
+        })
+    });
+
+    loadMessages({forceScrollBottom:true});
+}
+
+async function joinDM(user){
+    const r=await fetch("/api/dm/join",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({from:loggedUser,to:user})
+    });
+    const d=await r.json();
+    if(!d.success) return;
+
+    chatMode="dm";
+    currentDMChannel=d.channel.id;
+    currentDMUser=user;
+
+    showOverlay(`Entrou no chat privado com @${user}`);
+    loadMessages({forceScrollBottom:true});
 }
 
 function exitDM(){
     chatMode="public";
     currentDMChannel=null;
     currentDMUser=null;
-    showOverlay("Voltando ao chat público");
+    showOverlay("Saiu do chat privado");
     loadMessages({forceScrollBottom:true});
 }
 
@@ -467,7 +501,7 @@ async function loadMessages({forceScrollBottom=false}={}){
             div.className="message";
             div.innerHTML=`
               <div class="message-header">
-                <span class="username">${escapeHTML(m.sender)}</span>
+                <span class="username" style="color:${getColorFromName(m.sender)}">${escapeHTML(m.sender)}</span>
                 <span class="timestamp">${new Date(m.created_at).toLocaleString("pt-BR")}</span>
               </div>
               <div>${escapeHTML(m.message)}</div>`;
@@ -479,20 +513,10 @@ async function loadMessages({forceScrollBottom=false}={}){
 
     const r=await fetch("/api/messages");
     const data=await r.json();
-    const visible=data.filter(canUserSeeMessage);
-
-    if(visible.length){
-        const last=visible.at(-1);
-        if(lastMessageId && last.id!==lastMessageId){
-            if(last.name!==loggedUser || last.content?.includes("@"+loggedUser))
-                document.getElementById("messageSound").play();
-        }
-        lastMessageId=last.id;
-    }
 
     messagesBox.innerHTML="";
     data.forEach(msg=>{
-        if(!canUserSeeMessage(msg))return;
+        if(!canUserSeeMessage(msg)) return;
         const div=document.createElement("div");
         div.className="message"+(msg.to?" whisper":"");
         div.innerHTML=`
@@ -500,11 +524,7 @@ async function loadMessages({forceScrollBottom=false}={}){
             <span class="username" style="color:${getColorFromName(msg.name)}">${escapeHTML(msg.name)}</span>
             <span class="timestamp">${new Date(msg.created_at).toLocaleString("pt-BR")}</span>
           </div>
-          <div>${msg.to?"<strong>Sussurro:</strong> ":""}${
-            msg.image_url
-              ? `<a href="${msg.image_url}" target="_blank">🖼 Imagem</a>`
-              : highlightMentions(msg.content)
-          }</div>`;
+          <div>${msg.to?"<strong>Sussurro:</strong> ":""}${highlightMentions(msg.content)}</div>`;
         messagesBox.appendChild(div);
     });
 
@@ -513,19 +533,18 @@ async function loadMessages({forceScrollBottom=false}={}){
 
 /* SEND */
 async function sendMessage(){
-    if(isSending)return;
+    if(isSending) return;
     const text=contentInput.value.trim();
-    if(!text && !pendingImageUrl)return;
+    if(!text && !pendingImageUrl) return;
 
     const cmd=parseInput(text);
+    contentInput.value="";
 
-    if(cmd.type==="dm"){
-        contentInput.value="";
-        return openDM(cmd.user);
-    }
+    if(cmd.type==="create_dm") return openDM(cmd.user);
+    if(cmd.type==="join_dm") return joinDM(cmd.user);
+    if(cmd.type==="exit_dm") return exitDM();
 
     isSending=true;
-
     try{
         if(chatMode==="dm"){
             await fetch("/api/dm/send",{
@@ -538,21 +557,18 @@ async function sendMessage(){
                 })
             });
         } else {
-            const payload=cmd.type==="whisper"?cmd:{to:null,content:text};
             await fetch("/api/messages",{
                 method:"POST",
                 headers:{"Content-Type":"application/json"},
                 body:JSON.stringify({
                     name:loggedUser,
-                    content:payload.content||"🖼 Imagem",
+                    content:text,
                     image_url:pendingImageUrl,
-                    to:payload.to
+                    to:cmd.to||null
                 })
             });
-            if(payload.to) showOverlay(`Sussurro enviado para @${payload.to}`,"success");
+            if(cmd.to) showOverlay(`Sussurro enviado para @${cmd.to}`,"success");
         }
-
-        contentInput.value="";
         pendingImageUrl=null;
         loadMessages({forceScrollBottom:true});
     } finally {
@@ -574,7 +590,6 @@ async function updateOnlineStatus(){
     if(loggedUser)
         await fetch("/api/online",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:loggedUser})});
 }
-
 async function loadOnlineUsers(){
     const r=await fetch("/api/online");
     const d=await r.json();
@@ -600,6 +615,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 </script>
 </body>
 </html>
+
 
 
 
