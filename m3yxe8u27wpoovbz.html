@@ -348,22 +348,22 @@ try {
 
 /* =============================== */
 
-/* 🔔 OVERLAY ORIGINAL (EXATAMENTE IGUAL) */
-function showOverlay(message, buttonText = "OK") {
-    const overlay = document.getElementById("overlay");
-    const overlayText = document.getElementById("overlayText");
-    const overlayBtn = document.getElementById("overlayBtn");
+/* 🔔 OVERLAY FLUTUANTE (IGUAL AO DA PRINT) */
+function showOverlay(message) {
+    const overlay = document.createElement("div");
+    overlay.className = "overlay-notification";
+    overlay.textContent = message;
 
-    if (!overlay || !overlayText || !overlayBtn) return;
+    document.body.appendChild(overlay);
 
-    overlayText.textContent = message;
-    overlayBtn.textContent = buttonText;
+    setTimeout(() => {
+        overlay.classList.add("show");
+    }, 10);
 
-    overlay.style.display = "flex";
-
-    overlayBtn.onclick = () => {
-        overlay.style.display = "none";
-    };
+    setTimeout(() => {
+        overlay.classList.remove("show");
+        setTimeout(() => overlay.remove(), 300);
+    }, 3000);
 }
 
 /* =============================== */
@@ -613,74 +613,8 @@ async function sendMessage() {
         isSending = false;
     }
 }
-
-/* ONLINE */
-async function updateOnlineStatus() {
-    if (!loggedUser) return;
-    await fetch('/api/online', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: loggedUser })
-    });
-}
-
-async function loadOnlineUsers() {
-    try {
-        const res = await fetch('/api/online');
-        const data = await res.json();
-        document.getElementById("onlineUsers").textContent =
-            Array.isArray(data) && data.length
-                ? data.map(u => u.name).join(", ")
-                : "ninguém online";
-    } catch {
-        document.getElementById("onlineUsers").textContent = "erro";
-    }
-}
-
-/* 👤 MINIPROFILE */
-function initMiniProfile() {
-    const profile = document.getElementById("miniProfile");
-    const dropdown = document.getElementById("profileDropdown");
-    const arrow = document.getElementById("profileArrow");
-
-    if (!profile || !dropdown) return;
-
-    profile.addEventListener("click", e => {
-        e.stopPropagation();
-        dropdown.classList.toggle("open");
-        arrow?.classList.toggle("open");
-    });
-
-    document.addEventListener("click", () => {
-        dropdown.classList.remove("open");
-        arrow?.classList.remove("open");
-    });
-}
-
-/* INIT */
-document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("user-phone").textContent = loggedUser;
-
-    document.getElementById("content").addEventListener("keydown", e => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
-    initMiniProfile();
-
-    loadMessages();
-    setInterval(loadMessages, 3000);
-
-    updateOnlineStatus();
-    setInterval(updateOnlineStatus, 5000);
-
-    loadOnlineUsers();
-    setInterval(loadOnlineUsers, 5000);
-});
-</script>
 </body>
 </html>
+
 
 
