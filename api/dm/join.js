@@ -10,28 +10,27 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false });
   }
 
-  // 🔹 owner = quem criou o chat
-  // 🔹 from  = quem está entrando
+  // from = quem está entrando
+  // owner = quem criou o chat
   const { from, owner } = req.body;
 
   if (!from || !owner) {
     return res.status(400).json({ success: false });
   }
 
-  /* 🔍 procura canal existente entre os dois */
+  const users = [from, owner].sort();
+
   const { data: channel, error } = await supabase
     .from("private_channels")
     .select("*")
-    .or(
-      `and(user_a.eq.${owner},user_b.eq.${from}),and(user_a.eq.${from},user_b.eq.${owner})`
-    )
+    .eq("user1", users[0])
+    .eq("user2", users[1])
     .single();
 
   if (error || !channel) {
     return res.status(404).json({ success: false });
   }
 
-  /* 🔄 atualiza atividade */
   await supabase
     .from("private_channels")
     .update({ last_activity: new Date().toISOString() })
@@ -39,7 +38,6 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     success: true,
-    channel_id: channel.id,
     channel
   });
 }
