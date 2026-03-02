@@ -347,22 +347,29 @@ let currentDMUser = null;
 const contentInput = document.getElementById("content");
 const messagesBox = document.getElementById("messages");
 const userPhoneEl = document.getElementById("user-phone");
+const onlineUsersEl = document.getElementById("onlineUsers");
 
-const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
+const userColors = [
+    "#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72",
+    "#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"
+];
 
 /* UTILIDADES */
 function getColorFromName(name){
     let hash = 0;
-    for (let i = 0; i < name.length; i++) {
+    for(let i = 0; i < name.length; i++){
         hash = name.charCodeAt(i) + ((hash << 5) - hash);
     }
     return userColors[Math.abs(hash) % userColors.length];
 }
+
 function escapeHTML(str){
     return str.replace(/[&<>"']/g, m => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+        "&":"&amp;","<":"&lt;",">":"&gt;",
+        "\"":"&quot;","'":"&#039;"
     }[m]));
 }
+
 function highlightMentions(text){
     const escaped = escapeHTML(text);
     return escaped.replace(/@(\w+)/g,(m,u)=>
@@ -417,8 +424,7 @@ async function openDM(user){
     loadMessages({ forceScrollBottom:true });
 }
 
-async function joinDM(user){
-    // /entrar apenas reabre ou cria o canal
+function joinDM(user){
     return openDM(user);
 }
 
@@ -430,7 +436,7 @@ function exitDM(){
     loadMessages({ forceScrollBottom:true });
 }
 
-/* LOAD */
+/* LOAD MESSAGES */
 async function loadMessages({ forceScrollBottom=false } = {}){
     if(chatMode === "dm"){
         const r = await fetch(`/api/dm/messages?channel_id=${currentDMChannel}`);
@@ -484,8 +490,29 @@ async function loadMessages({ forceScrollBottom=false } = {}){
         messagesBox.appendChild(div);
     });
 
-    if(forceScrollBottom) {
+    if(forceScrollBottom){
         messagesBox.scrollTop = messagesBox.scrollHeight;
+    }
+}
+
+/* LOAD ONLINE USERS (ISOLADO, SEGURO) */
+async function loadOnlineUsers(){
+    if(chatMode !== "public") return;
+
+    try{
+        const r = await fetch("/api/online");
+        const users = await r.json();
+
+        onlineUsersEl.innerHTML = "";
+
+        users.forEach(u=>{
+            const li = document.createElement("li");
+            li.textContent = u;
+            li.style.color = getColorFromName(u);
+            onlineUsersEl.appendChild(li);
+        });
+    }catch(e){
+        console.warn("Erro ao atualizar usuários online");
     }
 }
 
@@ -559,11 +586,17 @@ document.addEventListener("DOMContentLoaded",()=>{
     });
 
     loadMessages();
-    setInterval(loadMessages,3000);
+    loadOnlineUsers();
+
+    setInterval(()=>{
+        loadMessages();
+        loadOnlineUsers();
+    },3000);
 });
 </script>
 </body>
 </html>
+
 
 
 
