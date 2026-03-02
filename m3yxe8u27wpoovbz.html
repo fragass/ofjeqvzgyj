@@ -352,6 +352,10 @@ let lastMessageId = null;
 let pendingImageUrl = null;
 let isSending = false;
 
+/* 🔒 DM STATE */
+let currentPrivateChannel = null;
+let currentPrivateUser = null;
+
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
 /* UTILIDADES */
@@ -407,8 +411,46 @@ function loadEmojis() {
 }
 loadEmojis();
 
+/* ================= PRIVATE MESSAGES ================= */
+
+async function loadPrivateMessages() {
+    if (!currentPrivateChannel) return;
+
+    try {
+        const res = await fetch(`/api/dm/messages?channel_id=${currentPrivateChannel}`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        const box = document.getElementById('messages');
+        box.innerHTML = "";
+
+        data.forEach(msg => {
+            const div = document.createElement('div');
+            div.className = 'message';
+            const date = new Date(msg.created_at).toLocaleString('pt-BR');
+            const color = getColorFromName(msg.sender);
+
+            div.innerHTML = `
+                <div class="message-header">
+                    <span class="username" style="color:${color}">${escapeHTML(msg.sender)}</span>
+                    <span class="timestamp">${date}</span>
+                </div>
+                <div>${highlightMentions(msg.message)}</div>
+            `;
+            box.appendChild(div);
+        });
+
+        box.scrollTop = box.scrollHeight;
+    } catch {}
+}
+
 /* MENSAGENS */
 async function loadMessages() {
+    if (currentPrivateChannel) {
+        loadPrivateMessages();
+        return;
+    }
+
     try {
         const res = await fetch('/api/messages');
         if (!res.ok) return;
@@ -456,7 +498,7 @@ async function loadMessages() {
     }
 }
 
-/* ✉️ ENVIO — COM SUPORTE A /s */
+/* ✉️ ENVIO */
 async function sendMessage() {
     if (isSending) return;
 
@@ -464,20 +506,97 @@ async function sendMessage() {
     let text = input.value.trim();
     if (!text) return;
 
-    let to = null;
-
-    // 🔒 COMANDO /s @nome mensagem
-    if (text.startsWith("/s ")) {
-        const match = text.match(/^\/s\s+@(\w+)\s+(.+)/);
-        if (!match) return;
-
-        to = match[1];
-        text = match[2];
-    }
-
     isSending = true;
 
     try {
+
+        /* ================= COMMANDS ================= */
+
+        // /c @nome
+        if (text.startsWith("/c ")) {
+            const match = text.match(/^\/c\s+@(\w+)/);
+            if (!match) return;
+
+            const target = match[1];
+
+            const res = await fetch("/api/dm/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ from: loggedUser, to: target })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                currentPrivateChannel = data.channel.id;
+                currentPrivateUser = target;
+            }
+
+            input.value = "";
+            loadMessages();
+            return;
+        }
+
+        // /entrar @nome
+        if (text.startsWith("/entrar ")) {
+            const match = text.match(/^\/entrar\s+@(\w+)/);
+            if (!match) return;
+
+            const target = match[1];
+
+            const res = await fetch("/api/dm/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ from: loggedUser, to: target })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                currentPrivateChannel = data.channel.id;
+                currentPrivateUser = target;
+            }
+
+            input.value = "";
+            loadMessages();
+            return;
+        }
+
+        // /sair
+        if (text === "/sair") {
+            currentPrivateChannel = null;
+            currentPrivateUser = null;
+            input.value = "";
+            loadMessages();
+            return;
+        }
+
+        /* ============================================ */
+
+        // se estiver em DM
+        if (currentPrivateChannel) {
+            await fetch("/api/dm/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    channel_id: currentPrivateChannel,
+                    sender: loggedUser,
+                    message: text
+                })
+            });
+
+            input.value = "";
+            loadMessages();
+            return;
+        }
+
+        // GLOBAL
+        let to = null;
+        if (text.startsWith("/s ")) {
+            const match = text.match(/^\/s\s+@(\w+)\s+(.+)/);
+            if (!match) return;
+            to = match[1];
+            text = match[2];
+        }
+
         await fetch("/api/messages", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -490,6 +609,7 @@ async function sendMessage() {
 
         input.value = "";
         loadMessages();
+
     } finally {
         isSending = false;
     }
@@ -563,6 +683,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
