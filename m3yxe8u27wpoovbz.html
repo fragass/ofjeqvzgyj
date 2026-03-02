@@ -336,20 +336,30 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 
 <script>
 /* 🔐 LOGGED USER — CORREÇÃO DEFINITIVA */
-let loggedUserRaw = sessionStorage.getItem("loggedUser");
-let loggedUser = loggedUserRaw;
+let loggedUser = null;
 
-try {
-    const parsed = JSON.parse(loggedUserRaw);
-    if (parsed && typeof parsed === "object" && parsed.name) {
-        loggedUser = parsed.name;
+(function () {
+    const raw = sessionStorage.getItem("loggedUser");
+    if (!raw) return;
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && parsed.name) {
+            loggedUser = parsed.name;
+        } else {
+            loggedUser = raw;
+        }
+    } catch {
+        loggedUser = raw;
     }
-} catch {}
+})();
 
 /* =============================== */
 
 /* 🔔 OVERLAY FLUTUANTE (IGUAL AO DA PRINT) */
 function showOverlay(message) {
+    if (!message) return;
+
     const overlay = document.createElement("div");
     overlay.className = "overlay-notification";
     overlay.textContent = message;
@@ -362,7 +372,9 @@ function showOverlay(message) {
 
     setTimeout(() => {
         overlay.classList.remove("show");
-        setTimeout(() => overlay.remove(), 300);
+        setTimeout(() => {
+            if (overlay.parentNode) overlay.remove();
+        }, 300);
     }, 3000);
 }
 
@@ -380,6 +392,7 @@ const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb",
 
 /* UTILIDADES */
 function getColorFromName(name) {
+    if (!name) return "#ccc";
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
         hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -388,12 +401,18 @@ function getColorFromName(name) {
 }
 
 function escapeHTML(str) {
+    if (!str) return "";
     return str.replace(/[&<>"']/g, m => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+        "&":"&amp;",
+        "<":"&lt;",
+        ">":"&gt;",
+        "\"":"&quot;",
+        "'":"&#039;"
     }[m]));
 }
 
 function highlightMentions(text) {
+    if (!text) return "";
     const escaped = escapeHTML(text);
     return escaped.replace(/@(\w+)/g, (m, u) =>
         u === loggedUser
@@ -404,6 +423,7 @@ function highlightMentions(text) {
 
 /* VISIBILIDADE */
 function canUserSeeMessage(msg) {
+    if (!msg) return false;
     if (!msg.to) return true;
     return msg.to === loggedUser || msg.name === loggedUser;
 }
@@ -411,18 +431,23 @@ function canUserSeeMessage(msg) {
 /* EMOJIS */
 function toggleEmojis() {
     const panel = document.getElementById("emojiPanel");
+    if (!panel) return;
     panel.style.display = panel.style.display === "flex" ? "none" : "flex";
 }
 
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
+
 function loadEmojis() {
     const panel = document.getElementById("emojiPanel");
+    if (!panel) return;
+
     panel.innerHTML = "";
     emojis.forEach(e => {
         const s = document.createElement("span");
         s.textContent = e;
         s.onclick = () => {
             const t = document.getElementById("content");
+            if (!t) return;
             t.value += e;
             t.focus();
         };
@@ -442,12 +467,20 @@ async function loadPrivateMessages() {
 
         const data = await res.json();
         const box = document.getElementById('messages');
+        if (!box) return;
+
         box.innerHTML = "";
 
         data.forEach(msg => {
+            if (!msg) return;
+
             const div = document.createElement('div');
             div.className = 'message';
-            const date = new Date(msg.created_at).toLocaleString('pt-BR');
+
+            const date = msg.created_at
+                ? new Date(msg.created_at).toLocaleString('pt-BR')
+                : "";
+
             const color = getColorFromName(msg.sender);
 
             div.innerHTML = `
@@ -476,26 +509,41 @@ async function loadMessages() {
         if (!res.ok) return;
 
         const data = await res.json();
+        if (!Array.isArray(data)) return;
+
         const visible = data.filter(canUserSeeMessage);
 
-        if (visible.length) {
-            const last = visible.at(-1);
+        if (visible.length > 0) {
+            const last = visible[visible.length - 1];
+
             if (lastMessageId && last.id !== lastMessageId) {
-                const mentioned = last.content?.includes("@" + loggedUser);
+                const mentioned = last.content && loggedUser
+                    ? last.content.includes("@" + loggedUser)
+                    : false;
+
                 if (last.name !== loggedUser || mentioned) {
-                    document.getElementById("messageSound")?.play();
+                    const sound = document.getElementById("messageSound");
+                    if (sound) sound.play();
                 }
             }
+
             lastMessageId = last.id;
         }
 
         const box = document.getElementById('messages');
+        if (!box) return;
+
         box.innerHTML = "";
 
         visible.forEach(msg => {
+            if (!msg) return;
+
             const div = document.createElement('div');
             div.className = 'message' + (msg.to ? ' whisper' : '');
-            const date = new Date(msg.created_at).toLocaleString('pt-BR');
+            const date = msg.created_at
+                ? new Date(msg.created_at).toLocaleString('pt-BR')
+                : "";
+
             const color = getColorFromName(msg.name);
 
             const content = msg.image_url
@@ -521,8 +569,11 @@ async function loadMessages() {
 /* ✉️ ENVIO */
 async function sendMessage() {
     if (isSending) return;
+    if (!loggedUser) return;
 
     const input = document.getElementById("content");
+    if (!input) return;
+
     let text = input.value.trim();
     if (!text) return;
 
@@ -616,6 +667,7 @@ async function sendMessage() {
 </script>
 </body>
 </html>
+
 
 
 
