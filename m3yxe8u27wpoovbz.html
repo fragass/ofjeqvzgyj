@@ -335,7 +335,19 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
     </div>
 
 <script>
-const loggedUser = sessionStorage.getItem("loggedUser");
+/* 🔐 LOGGED USER — CORREÇÃO DEFINITIVA */
+let loggedUserRaw = sessionStorage.getItem("loggedUser");
+let loggedUser = loggedUserRaw;
+
+try {
+    const parsed = JSON.parse(loggedUserRaw);
+    if (parsed && typeof parsed === "object" && parsed.name) {
+        loggedUser = parsed.name;
+    }
+} catch {}
+
+/* =============================== */
+
 let lastMessageId = null;
 let pendingImageUrl = null;
 let isSending = false;
@@ -350,17 +362,18 @@ function getColorFromName(name) {
 }
 
 function escapeHTML(str) {
-    return str.replace(/[&<>"']/g, match => ({
+    return str.replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-    }[match]));
+    }[m]));
 }
 
 function highlightMentions(text) {
     const escaped = escapeHTML(text);
-    return escaped.replace(/@(\w+)/g, (match, username) => {
-        if (username === loggedUser) return `<span class="mention-self">@${username}</span>`;
-        return `<span class="mention">@${username}</span>`;
-    });
+    return escaped.replace(/@(\w+)/g, (m, u) =>
+        u === loggedUser
+            ? `<span class="mention-self">@${u}</span>`
+            : `<span class="mention">@${u}</span>`
+    );
 }
 
 /* VISIBILIDADE */
@@ -379,21 +392,21 @@ const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","
 function loadEmojis() {
     const panel = document.getElementById("emojiPanel");
     panel.innerHTML = "";
-    emojis.forEach(emoji => {
-        const span = document.createElement("span");
-        span.textContent = emoji;
-        span.onclick = () => {
-            const textarea = document.getElementById("content");
-            textarea.value += emoji;
-            textarea.focus();
+    emojis.forEach(e => {
+        const s = document.createElement("span");
+        s.textContent = e;
+        s.onclick = () => {
+            const t = document.getElementById("content");
+            t.value += e;
+            t.focus();
         };
-        panel.appendChild(span);
+        panel.appendChild(s);
     });
 }
 loadEmojis();
 
 /* MENSAGENS */
-async function loadMessages(options = {}) {
+async function loadMessages() {
     try {
         const res = await fetch('/api/messages');
         if (!res.ok) return;
@@ -406,7 +419,7 @@ async function loadMessages(options = {}) {
             if (lastMessageId && last.id !== lastMessageId) {
                 const mentioned = last.content?.includes("@" + loggedUser);
                 if (last.name !== loggedUser || mentioned) {
-                    document.getElementById("messageSound").play();
+                    document.getElementById("messageSound")?.play();
                 }
             }
             lastMessageId = last.id;
@@ -437,37 +450,58 @@ async function loadMessages(options = {}) {
 
         box.scrollTop = box.scrollHeight;
     } catch (e) {
-        console.error("Erro ao carregar mensagens:", e);
+        console.error(e);
     }
 }
 
-/* ONLINE — CONTADOR CORRIGIDO */
+/* ✉️ ENVIO — RESTAURADO */
+async function sendMessage() {
+    if (isSending) return;
+
+    const input = document.getElementById("content");
+    const text = input.value.trim();
+    if (!text) return;
+
+    isSending = true;
+
+    try {
+        await fetch("/api/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: loggedUser,
+                content: text,
+                to: null
+            })
+        });
+
+        input.value = "";
+        loadMessages();
+    } finally {
+        isSending = false;
+    }
+}
+
+/* ONLINE — LISTA DE NOMES */
 async function updateOnlineStatus() {
     if (!loggedUser) return;
-    try {
-        await fetch('/api/online', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: loggedUser })
-        });
-    } catch {}
+    await fetch('/api/online', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: loggedUser })
+    });
 }
 
 async function loadOnlineUsers() {
     try {
         const res = await fetch('/api/online');
-        if (!res.ok) {
-            document.getElementById("onlineUsers").textContent = "0";
-            return;
-        }
-
         const data = await res.json();
-        if (!Array.isArray(data)) throw "invalid";
-
-        // 🔢 agora é contador, não lista
-        document.getElementById("onlineUsers").textContent = data.length;
+        document.getElementById("onlineUsers").textContent =
+            Array.isArray(data) && data.length
+                ? data.map(u => u.name).join(", ")
+                : "ninguém online";
     } catch {
-        document.getElementById("onlineUsers").textContent = "0";
+        document.getElementById("onlineUsers").textContent = "erro";
     }
 }
 
@@ -494,6 +528,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 
