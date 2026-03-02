@@ -8,11 +8,15 @@ const supabase = createClient(
 export default async function handler(req, res) {
   const { channel_id } = req.query;
 
+  if (!channel_id) {
+    return res.json([]);
+  }
+
   const { data } = await supabase
     .from("private_messages")
     .select("*")
     .eq("channel_id", channel_id)
     .order("created_at", { ascending: true });
 
-  res.json(data || []);
+  return res.json(data || []);
 }
