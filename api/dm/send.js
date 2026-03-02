@@ -11,7 +11,6 @@ export default async function handler(req, res) {
   }
 
   const { channel_id, sender, message } = req.body;
-
   if (!channel_id || !sender || !message) {
     return res.status(400).json({ success: false });
   }
@@ -27,5 +26,5 @@ export default async function handler(req, res) {
     .update({ last_activity: new Date().toISOString() })
     .eq("id", channel_id);
 
-  return res.json({ success: true });
+  res.json({ success: true });
 }
