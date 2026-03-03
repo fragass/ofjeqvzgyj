@@ -464,12 +464,12 @@ if (trimmed.startsWith("/c ")) {
                 // ✅ Overlay para quem digitou
                 showOverlay(`Canal privado criado com sucesso com @${otherUser}.`, "success");
 
-                // 💌 Envia sussurro para a outra pessoa
+                // 💌 Envia sussurro para a outra pessoa usando a conta "Sistema"
                 await fetch('/api/messages', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        name: loggedUser,                 // quem criou a sala
+                        name: "Sistema",                 // remetente fixo
                         content: `@${loggedUser} criou um canal privado com você. Digite /entrar @${loggedUser} para entrar.`,
                         to: otherUser
                     })
@@ -726,6 +726,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 </body>
 </html>
+
 
 
 
