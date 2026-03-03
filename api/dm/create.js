@@ -1,3 +1,4 @@
+// api/dm/create.js
 export default async function handler(req, res) {
   try {
     const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -22,6 +23,14 @@ export default async function handler(req, res) {
       return res.status(400).json({
         success: false,
         error: "Dados incompletos. Use: /c @usuario NOME_DA_SALA",
+      });
+    }
+
+    // ✅ bloqueia /c @seu_proprio_nome ...
+    if (creator === target) {
+      return res.status(400).json({
+        success: false,
+        error: "Você precisa marcar OUTRO usuário para criar uma sala. Ex: /c @fulano sala123",
       });
     }
 
