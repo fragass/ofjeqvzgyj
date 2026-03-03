@@ -14,10 +14,7 @@
   <style>
     * { box-sizing: border-box; }
 
-    html {
-      scrollbar-width: thin;
-      scrollbar-color: #2c2f36 #0b0f14;
-    }
+    html { scrollbar-width: thin; scrollbar-color: #2c2f36 #0b0f14; }
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: #0b0f14; }
     ::-webkit-scrollbar-thumb { background: #2c2f36; border-radius: 6px; }
@@ -79,19 +76,14 @@
       color: #e6edf3;
     }
 
-    .header-left {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
+    .header-left { display: flex; flex-direction: column; gap: 4px; }
     .warning-text { color: #ffffff; }
 
     #typingStatus {
       font-size: 12px;
       font-weight: 500;
       color: #8b949e;
-      min-height: 14px; /* evita "pular" layout */
+      min-height: 14px;
     }
 
     .admin-link {
@@ -121,12 +113,7 @@
     }
     .message:hover { background: #1b2028; transform: translateY(-1px); }
 
-    .message-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-
+    .message-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
     .username { font-weight: 600; color: #ffffff; }
     .timestamp { font-size: 11px; color: #8b949e; }
 
@@ -167,13 +154,7 @@
     }
     button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 
-    /* EMOJI */
-    .emoji-toggle {
-      cursor: pointer;
-      font-size: 20px;
-      opacity: 0.75;
-      transition: all 0.2s ease;
-    }
+    .emoji-toggle { cursor: pointer; font-size: 20px; opacity: 0.75; transition: all 0.2s ease; }
     .emoji-toggle:hover { opacity: 1; transform: scale(1.15); }
 
     .emoji-panel {
@@ -241,13 +222,7 @@
     #dropdown-menu button:hover { background: #151a21; transform: translateY(-1px); }
 
     .online-header { display: flex; align-items: center; gap: 8px; }
-    .online-dot {
-      width: 10px;
-      height: 10px;
-      background: #3fb950;
-      border-radius: 50%;
-      animation: pulse 1.5s infinite;
-    }
+    .online-dot { width: 10px; height: 10px; background: #3fb950; border-radius: 50%; animation: pulse 1.5s infinite; }
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(63,185,80,0.6); }
       70% { box-shadow: 0 0 0 8px rgba(63,185,80,0); }
@@ -257,7 +232,6 @@
     .mention { color: #ffffff; background: #2c2f36; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
     .mention-self { color: #1f2937; background: #e5e7eb; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
 
-    /* SUSSURRO */
     .message.whisper {
       background: #2a2538;
       border: 1px solid #6f42c1;
@@ -267,7 +241,6 @@
     }
     .message.whisper:hover { background: #332d46; }
 
-    /* DM */
     .message.dm {
       background: #0f1a13;
       border: 1px solid rgba(63,185,80,0.35);
@@ -275,7 +248,6 @@
     }
     .message.dm:hover { background: #14261b; }
 
-    /* Overlay */
     .overlay {
       position: fixed;
       bottom: 20px;
@@ -293,12 +265,10 @@
     .overlay.error { background: #da3633; }
     .overlay.info { background: #2c2c2c; }
 
-    /* RESPONSIVO */
     @media (max-width: 992px) {
       .container { width: 90%; height: 80vh; }
       .emoji-panel { right: 20px; bottom: 80px; width: 240px; }
     }
-
     @media (max-width: 768px) {
       .container { height: 75vh; }
       .form { flex-direction: column; align-items: stretch; gap: 6px; }
@@ -307,7 +277,6 @@
       .emoji-panel { width: 90%; right: 5%; bottom: 80px; }
       .header { flex-direction: column; align-items: flex-start; gap: 6px; }
     }
-
     @media (max-width: 480px) {
       body { padding: 5px; }
       .container { height: 85vh; }
@@ -366,7 +335,7 @@
     let pendingImageUrl = null;
     let isSending = false;
 
-    let chatMode = "public"; // "public" | "dm"
+    let chatMode = "public";
     let currentRoom = null;
     let currentOther = null;
 
@@ -376,7 +345,6 @@
 
     const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
-    /* UTILIDADES */
     function getColorFromName(name) {
       let hash = 0;
       for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -397,13 +365,11 @@
       });
     }
 
-    /* VISIBILIDADE DE MENSAGEM (SUSSURRO) */
     function canUserSeeMessage(msg) {
       if (!msg.to) return true;
       return msg.to === loggedUser || msg.name === loggedUser;
     }
 
-    /* OVERLAY */
     function showOverlay(msg, type = "info") {
       const overlay = document.createElement("div");
       overlay.className = `overlay ${type}`;
@@ -425,7 +391,6 @@
       }
     }
 
-    /* EMOJIS */
     function toggleEmojis() {
       const panel = document.getElementById("emojiPanel");
       panel.style.display = panel.style.display === "flex" ? "none" : "flex";
@@ -449,7 +414,6 @@
     }
     loadEmojis();
 
-    /* PASTE DE IMAGEM (PUBLIC + DM) */
     document.addEventListener("DOMContentLoaded", () => {
       const contentInput = document.getElementById("content");
       if (!contentInput) return;
@@ -470,7 +434,6 @@
       });
     });
 
-    /* UPLOAD DE IMAGEM */
     async function uploadImage(file) {
       const fileName = `${Date.now()}-${file.name}`;
       const formData = new FormData();
@@ -496,7 +459,6 @@
       }
     }
 
-    /* PARSE SUSSURRO */
     function parseWhisper(text) {
       if (text.startsWith("/s ")) {
         const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
@@ -505,7 +467,7 @@
       return { to: null, content: text };
     }
 
-    /* PARSE COMANDOS DM */
+    // ✅ letras + números + _ + -
     function parseCreateRoom(text) {
       const match = text.match(/^\/c\s+@(\w+)\s+([A-Za-z0-9_-]{3,32})$/);
       if (!match) return null;
@@ -520,12 +482,11 @@
       return /^\/sair\s*$/.test(text);
     }
 
-    /* DIGITANDO (CORREÇÃO: fica true enquanto o campo estiver focado e com texto) */
     async function sendTyping(isTyping) {
       if (!loggedUser) return;
 
       const now = Date.now();
-      if (isTyping && now - lastTypingSentAt < 800) return; // throttle
+      if (isTyping && now - lastTypingSentAt < 800) return;
       lastTypingSentAt = now;
 
       const room = (chatMode === "dm" && currentRoom) ? currentRoom : null;
@@ -534,11 +495,7 @@
         await fetch("/api/online", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: loggedUser,
-            typing: !!isTyping,
-            room
-          })
+          body: JSON.stringify({ name: loggedUser, typing: !!isTyping, room })
         });
       } catch {}
     }
@@ -550,9 +507,7 @@
 
       if (hasText && isFocused) {
         clearTimeout(typingDebounceTimer);
-        typingDebounceTimer = setTimeout(() => {
-          sendTyping(true);
-        }, 120);
+        typingDebounceTimer = setTimeout(() => sendTyping(true), 120);
         return;
       }
 
@@ -579,7 +534,6 @@
         const res = await fetch("/api/online");
         const data = await res.json();
         const users = Array.isArray(data) ? data : [];
-
         const now = Date.now();
 
         const typingUsers = users.filter(u => {
@@ -589,13 +543,10 @@
           if (!u.last_typing) return false;
 
           const last = new Date(u.last_typing).getTime();
-          if (now - last > 7000) return false; // tolerância
+          if (now - last > 7000) return false;
 
-          if (chatMode === "dm" && currentRoom) {
-            return u.typing_room === currentRoom;
-          }
-
-          return !u.typing_room; // público
+          if (chatMode === "dm" && currentRoom) return u.typing_room === currentRoom;
+          return !u.typing_room;
         });
 
         setTypingUI(typingUsers.map(u => u.name));
@@ -604,7 +555,6 @@
       }
     }
 
-    /* MENSAGENS - PÚBLICO */
     async function loadPublicMessages(options = {}) {
       const { forceScrollBottom = false } = options;
 
@@ -657,9 +607,8 @@
           box.appendChild(div);
         });
 
-        if (shouldAutoScroll) {
-          box.scrollTop = box.scrollHeight;
-        } else {
+        if (shouldAutoScroll) box.scrollTop = box.scrollHeight;
+        else {
           const heightDiff = box.scrollHeight - previousScrollHeight;
           box.scrollTop = previousScrollTop + heightDiff;
         }
@@ -668,7 +617,6 @@
       }
     }
 
-    /* MENSAGENS - DM */
     async function loadDmMessages(options = {}) {
       const { forceScrollBottom = false } = options;
       if (!currentRoom) return;
@@ -707,9 +655,8 @@
           box.appendChild(div);
         });
 
-        if (shouldAutoScroll) {
-          box.scrollTop = box.scrollHeight;
-        } else {
+        if (shouldAutoScroll) box.scrollTop = box.scrollHeight;
+        else {
           const heightDiff = box.scrollHeight - previousScrollHeight;
           box.scrollTop = previousScrollTop + heightDiff;
         }
@@ -723,19 +670,18 @@
       return loadPublicMessages(options);
     }
 
-    /* DM ACTIONS */
+    // ✅ Agora: cria OU reaproveita, e entra automaticamente
     async function createRoom(target, room) {
       try {
         const res = await fetch("/api/dm/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            // formato que alguns backends usam
             creator: loggedUser,
             target,
             room,
 
-            // compat extra caso seu create.js espere outros nomes
+            // compat extra
             name: loggedUser,
             user1: loggedUser,
             user2: target,
@@ -743,28 +689,27 @@
           })
         });
 
-        const text = await res.text();
-        let data = null;
-        try { data = JSON.parse(text); } catch { data = null; }
+        const data = await res.json().catch(() => null);
 
-        if (!res.ok) {
-          const msg = (data && (data.message || data.error || data.details))
-            ? (data.message || data.error || data.details)
-            : `Erro ao criar sala (${res.status})`;
-          showOverlay(msg, "error");
+        if (!res.ok || !data) {
+          showOverlay("Erro ao criar/abrir sala ❌", "error");
           return;
         }
 
-        if (data && data.success === false) {
-          showOverlay(data.message || "Erro ao criar sala ❌", "error");
+        if (!data.success) {
+          showOverlay(data.error || "Erro ao criar/abrir sala ❌", "error");
           return;
         }
 
-        showOverlay(`Sala "${room}" criada ✅`, "success");
-        showOverlay(`Notificação enviada para @${target}`, "info");
+        // mensagem clara e auto-entrar
+        if (data.message) showOverlay(data.message, data.reused ? "info" : "success");
+        const roomToEnter = data.room || room;
+
+        // entra automaticamente
+        await enterRoom(roomToEnter);
 
       } catch (e) {
-        showOverlay("Erro ao criar sala ❌", "error");
+        showOverlay("Erro ao criar/abrir sala ❌", "error");
       }
     }
 
@@ -824,7 +769,6 @@
       showOverlay(`Saiu da sala "${left}" ✅`, "success");
     }
 
-    /* ENVIO */
     async function sendPublicMessage(text) {
       const contentInput = document.getElementById('content');
       const { to, content } = parseWhisper(text);
@@ -880,7 +824,7 @@
 
       if (create) {
         contentInput.value = "";
-        showOverlay(`Criando sala "${create.room}"...`, "info");
+        showOverlay(`Abrindo sala com @${create.target}...`, "info");
         await createRoom(create.target, create.room);
         onUserTyping();
         return;
@@ -910,12 +854,8 @@
 
       try {
         await sendTyping(false);
-
-        if (chatMode === "dm") {
-          await sendDmMessage(text);
-        } else {
-          await sendPublicMessage(text);
-        }
+        if (chatMode === "dm") await sendDmMessage(text);
+        else await sendPublicMessage(text);
       } catch (e) {
         console.error("Erro ao enviar:", e);
         showOverlay("Falha ao enviar mensagem ❌", "error");
@@ -928,7 +868,6 @@
       }
     }
 
-    /* ONLINE */
     async function updateOnlineStatus() {
       if (!loggedUser) return;
       await fetch('/api/online', {
@@ -947,7 +886,6 @@
       } catch {}
     }
 
-    /* INIT */
     document.addEventListener("DOMContentLoaded", () => {
       const miniProfile = document.getElementById("mini-profile");
       const dropdownMenu = document.getElementById("dropdown-menu");
@@ -975,7 +913,6 @@
         window.location.href = "index.html";
       };
 
-      // Enter envia
       contentInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -999,6 +936,7 @@
       loadOnlineUsers();
       setInterval(loadOnlineUsers, 5000);
 
+      // typing UI
       loadTypingStatus();
       setInterval(loadTypingStatus, 900);
     });
