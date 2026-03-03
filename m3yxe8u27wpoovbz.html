@@ -335,7 +335,9 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
     </div>
 
 <script>
-const loggedUser = sessionStorage.getItem("loggedUser");
+const loggedUserRaw = sessionStorage.getItem("loggedUser");
+const loggedUser = loggedUserRaw ? JSON.parse(loggedUserRaw)?.name || loggedUserRaw : null;
+
 let lastMessageId = null;
 let pendingImageUrl = null;
 let isSending = false;
@@ -350,12 +352,14 @@ function getColorFromName(name) {
 }
 
 function escapeHTML(str) {
+    if (!str) return "";
     return str.replace(/[&<>"']/g, match => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
     }[match]));
 }
 
 function highlightMentions(text) {
+    if (!text) return "";
     const escaped = escapeHTML(text);
     return escaped.replace(/@(\w+)/g, (match, username) => {
         if (username === loggedUser) return `<span class="mention-self">@${username}</span>`;
@@ -363,10 +367,10 @@ function highlightMentions(text) {
     });
 }
 
-/* VISIBILIDADE DE MENSAGEM (CORREÇÃO) */
+/* VISIBILIDADE DE MENSAGEM */
 function canUserSeeMessage(msg) {
-    if (!msg.to) return true; // mensagem normal
-    return msg.to === loggedUser || msg.name === loggedUser; // sussurro
+    if (!msg.to) return true;
+    return msg.to === loggedUser || msg.name === loggedUser;
 }
 
 /* EMOJIS */
@@ -376,8 +380,11 @@ function toggleEmojis() {
 }
 
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
+
 function loadEmojis() {
     const panel = document.getElementById("emojiPanel");
+    if (!panel) return;
+
     panel.innerHTML = "";
     emojis.forEach(emoji => {
         const span = document.createElement("span");
@@ -446,24 +453,37 @@ async function loadMessages(options = {}) {
 
     try {
         const res = await fetch('/api/messages');
-        const data = await res.json();
+        let data = await res.json();
 
-        /* 🔔 NOTIFICAÇÃO CORRIGIDA */
+        if (!Array.isArray(data)) data = [];
+
         const visibleMessages = data.filter(msg => canUserSeeMessage(msg));
+
+        /* 🔥 CORREÇÃO IMPORTANTE PARA EXPIRAÇÃO */
+        if (visibleMessages.length === 0) {
+            lastMessageId = null;
+        }
 
         if (visibleMessages.length) {
             const lastVisible = visibleMessages[visibleMessages.length - 1];
 
-            if (lastMessageId && lastVisible.id !== lastMessageId) {
+            if (
+                lastMessageId &&
+                lastVisible.id !== lastMessageId
+            ) {
                 const mentioned = lastVisible.content?.includes("@" + loggedUser);
                 if (lastVisible.name !== loggedUser || mentioned) {
-                    document.getElementById("messageSound").play();
+                    const sound = document.getElementById("messageSound");
+                    if (sound) sound.play().catch(() => {});
                 }
             }
+
             lastMessageId = lastVisible.id;
         }
 
         const box = document.getElementById('messages');
+        if (!box) return;
+
         const previousScrollTop = box.scrollTop;
         const previousScrollHeight = box.scrollHeight;
         const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
@@ -471,10 +491,8 @@ async function loadMessages(options = {}) {
 
         box.innerHTML = '';
 
-        data.forEach(msg => {
+        visibleMessages.forEach(msg => {
             const isWhisper = msg.to !== null;
-            if (!canUserSeeMessage(msg)) return;
-
             const div = document.createElement('div');
             div.className = 'message' + (isWhisper ? ' whisper' : '');
 
@@ -502,6 +520,7 @@ async function loadMessages(options = {}) {
             const heightDiff = box.scrollHeight - previousScrollHeight;
             box.scrollTop = previousScrollTop + heightDiff;
         }
+
     } catch (e) {
         console.error("Erro ao carregar mensagens:", e);
     }
@@ -509,7 +528,7 @@ async function loadMessages(options = {}) {
 
 /* ENVIO */
 async function sendMessage() {
-    if (isSending) return;
+    if (isSending || !loggedUser) return;
 
     const contentInput = document.getElementById('content');
     const sendButton = document.querySelector(".send-btn");
@@ -520,9 +539,11 @@ async function sendMessage() {
     const { to, content } = parseWhisper(text);
 
     isSending = true;
-    sendButton.disabled = true;
-    sendButton.style.opacity = "0.6";
-    sendButton.style.cursor = "not-allowed";
+    if (sendButton) {
+        sendButton.disabled = true;
+        sendButton.style.opacity = "0.6";
+        sendButton.style.cursor = "not-allowed";
+    }
 
     try {
         await fetch('/api/messages', {
@@ -541,14 +562,17 @@ async function sendMessage() {
         await loadMessages({ forceScrollBottom: true });
 
         if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
+
     } catch (e) {
         console.error("Erro ao enviar mensagem:", e);
         if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
     } finally {
         isSending = false;
-        sendButton.disabled = false;
-        sendButton.style.opacity = "1";
-        sendButton.style.cursor = "pointer";
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.style.opacity = "1";
+            sendButton.style.cursor = "pointer";
+        }
     }
 }
 
@@ -590,43 +614,57 @@ document.addEventListener("DOMContentLoaded", () => {
     const dropdownMenu = document.getElementById("dropdown-menu");
     const arrow = document.getElementById("arrow");
 
-    document.getElementById("user-phone").textContent = loggedUser;
+    if (loggedUser) {
+        const phone = document.getElementById("user-phone");
+        if (phone) phone.textContent = loggedUser;
+    }
 
-    miniProfile.onclick = () => {
-        const open = dropdownMenu.style.display === "block";
-        dropdownMenu.style.display = open ? "none" : "block";
-        arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
-    };
+    if (miniProfile && dropdownMenu && arrow) {
+        miniProfile.onclick = () => {
+            const open = dropdownMenu.style.display === "block";
+            dropdownMenu.style.display = open ? "none" : "block";
+            arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
+        };
 
-    document.addEventListener("click", (e) => {
-        if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
-            dropdownMenu.style.display = "none";
-            arrow.style.transform = "rotate(0deg)";
-        }
-    });
+        document.addEventListener("click", (e) => {
+            if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
+                dropdownMenu.style.display = "none";
+                arrow.style.transform = "rotate(0deg)";
+            }
+        });
+    }
 
-    document.getElementById("logout").onclick = () => {
-        sessionStorage.clear();
-        window.location.href = "index.html";
-    };
+    const logout = document.getElementById("logout");
+    if (logout) {
+        logout.onclick = () => {
+            sessionStorage.clear();
+            window.location.href = "index.html";
+        };
+    }
 
-    document.getElementById("content").addEventListener("keydown", e => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
+    const content = document.getElementById("content");
+    if (content) {
+        content.addEventListener("keydown", e => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
 
     loadMessages();
     setInterval(loadMessages, 3000);
+
     updateOnlineStatus();
     setInterval(updateOnlineStatus, 5000);
+
     loadOnlineUsers();
     setInterval(loadOnlineUsers, 5000);
 });
 </script>
 </body>
 </html>
+
 
 
 
