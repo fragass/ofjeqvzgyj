@@ -548,7 +548,6 @@
       const hasText = input && input.value.trim().length > 0;
       const isFocused = document.activeElement === input;
 
-      // mantém typing=true enquanto há texto e foco
       if (hasText && isFocused) {
         clearTimeout(typingDebounceTimer);
         typingDebounceTimer = setTimeout(() => {
@@ -557,7 +556,6 @@
         return;
       }
 
-      // se ficou vazio ou perdeu foco, para
       sendTyping(false);
     }
 
@@ -591,7 +589,7 @@
           if (!u.last_typing) return false;
 
           const last = new Date(u.last_typing).getTime();
-          if (now - last > 7000) return false; // tolerância maior
+          if (now - last > 7000) return false; // tolerância
 
           if (chatMode === "dm" && currentRoom) {
             return u.typing_room === currentRoom;
@@ -731,20 +729,41 @@
         const res = await fetch("/api/dm/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ creator: loggedUser, target, room })
+          body: JSON.stringify({
+            // formato que alguns backends usam
+            creator: loggedUser,
+            target,
+            room,
+
+            // compat extra caso seu create.js espere outros nomes
+            name: loggedUser,
+            user1: loggedUser,
+            user2: target,
+            to: target
+          })
         });
 
-        const data = await res.json();
+        const text = await res.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch { data = null; }
 
-        if (!res.ok || !data.success) {
-          if (res.status === 409) showOverlay(`Sala "${room}" já existe ❌`, "error");
-          else showOverlay(`Erro ao criar sala "${room}" ❌`, "error");
+        if (!res.ok) {
+          const msg = (data && (data.message || data.error || data.details))
+            ? (data.message || data.error || data.details)
+            : `Erro ao criar sala (${res.status})`;
+          showOverlay(msg, "error");
+          return;
+        }
+
+        if (data && data.success === false) {
+          showOverlay(data.message || "Erro ao criar sala ❌", "error");
           return;
         }
 
         showOverlay(`Sala "${room}" criada ✅`, "success");
         showOverlay(`Notificação enviada para @${target}`, "info");
-      } catch {
+
+      } catch (e) {
         showOverlay("Erro ao criar sala ❌", "error");
       }
     }
@@ -863,7 +882,7 @@
         contentInput.value = "";
         showOverlay(`Criando sala "${create.room}"...`, "info");
         await createRoom(create.target, create.room);
-        onUserTyping(); // vai virar false pq ficou vazio
+        onUserTyping();
         return;
       }
 
@@ -905,7 +924,7 @@
         sendButton.disabled = false;
         sendButton.style.opacity = "1";
         sendButton.style.cursor = "pointer";
-        onUserTyping(); // atualiza estado final (geralmente vazio => false)
+        onUserTyping();
       }
     }
 
@@ -964,7 +983,7 @@
         }
       });
 
-      // ✅ O typing agora segue foco + texto (não tempo)
+      // typing: foco + texto
       contentInput.addEventListener("input", () => onUserTyping());
       contentInput.addEventListener("focus", () => onUserTyping());
       contentInput.addEventListener("blur", () => sendTyping(false));
