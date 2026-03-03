@@ -129,7 +129,6 @@
       flex-wrap: wrap;
     }
 
-    /* Reply bar */
     .reply-bar {
       width: 100%;
       display: none;
@@ -217,7 +216,6 @@
     .emoji-panel span { cursor: pointer; font-size: 20px; transition: transform 0.1s ease; }
     .emoji-panel span:hover { transform: scale(1.3); }
 
-    /* reply preview inside message */
     .reply-preview {
       background: rgba(255,255,255,.04);
       border: 1px solid rgba(255,255,255,.08);
@@ -579,39 +577,26 @@
       return { to: null, content: text };
     }
 
-    // ✅ NOVO: aceita nomes com espaços e converte pra um nome válido (slug)
     function normalizeRoomName(roomRaw) {
       let room = (roomRaw || "").trim();
-
-      // espaços -> hífen
       room = room.replace(/\s+/g, "-");
-
-      // remove chars fora do permitido
       room = room.replace(/[^A-Za-z0-9_-]/g, "");
-
-      // tamanho máx
       room = room.slice(0, 32);
-
       return room;
     }
 
-    // ✅ NOVO: /c @user QUALQUER NOME AQUI
     function parseCreateRoom(text) {
       const match = text.match(/^\/c\s+@(\w+)\s+(.+)$/);
       if (!match) return null;
 
       const target = match[1];
       const roomRaw = match[2];
-
       const room = normalizeRoomName(roomRaw);
 
-      // se ficou inválido
       if (!room || room.length < 3) return { target, room: null, roomRaw };
-
       return { target, room, roomRaw };
     }
 
-    // ✅ NOVO: /entrar QUALQUER NOME AQUI
     function parseEnterRoom(text) {
       const match = text.match(/^\/entrar\s+(.+)$/);
       if (!match) return null;
@@ -620,7 +605,6 @@
       const room = normalizeRoomName(roomRaw);
 
       if (!room || room.length < 3) return { room: null, roomRaw };
-
       return { room, roomRaw };
     }
 
@@ -630,10 +614,10 @@
 
     // ---------- Typing ----------
     async function sendTyping(isTyping) {
-      if (!loggedUser) return;
+      if (!loggedUser) return true;
 
       const now = Date.now();
-      if (isTyping && now - lastTypingSentAt < 800) return;
+      if (isTyping && now - lastTypingSentAt < 800) return true;
       lastTypingSentAt = now;
 
       const room = (chatMode === "dm" && currentRoom) ? currentRoom : null;
@@ -644,7 +628,10 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: loggedUser, typing: !!isTyping, room })
         });
-      } catch {}
+        return true;
+      } catch {
+        return false;
+      }
     }
 
     function onUserTyping() {
@@ -696,8 +683,10 @@
         });
 
         setTypingUI(typingUsers.map(u => u.name));
+        return true;
       } catch {
         clearTypingUI();
+        return false;
       }
     }
 
@@ -781,15 +770,18 @@
           const heightDiff = box.scrollHeight - previousScrollHeight;
           box.scrollTop = previousScrollTop + heightDiff;
         }
+
+        return true;
       } catch (e) {
         console.error("Erro ao carregar mensagens:", e);
+        return false;
       }
     }
 
     // ---------- Load DM ----------
     async function loadDmMessages(options = {}) {
       const { forceScrollBottom = false } = options;
-      if (!currentRoom) return;
+      if (!currentRoom) return true;
 
       try {
         const res = await fetch(`/api/dm/messages?room=${encodeURIComponent(currentRoom)}&name=${encodeURIComponent(loggedUser)}`);
@@ -839,8 +831,11 @@
           const heightDiff = box.scrollHeight - previousScrollHeight;
           box.scrollTop = previousScrollTop + heightDiff;
         }
+
+        return true;
       } catch (e) {
         console.error("Erro ao carregar DM:", e);
+        return false;
       }
     }
 
@@ -1010,7 +1005,6 @@
       const create = parseCreateRoom(text);
       const enter = parseEnterRoom(text);
 
-      // ✅ create room (agora aceita espaços no nome)
       if (create) {
         contentInput.value = "";
 
@@ -1030,7 +1024,6 @@
         return;
       }
 
-      // ✅ enter room (agora aceita espaços no nome)
       if (enter) {
         contentInput.value = "";
 
@@ -1085,12 +1078,18 @@
 
     // ---------- Online ----------
     async function updateOnlineStatus() {
-      if (!loggedUser) return;
-      await fetch('/api/online', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: loggedUser })
-      });
+      if (!loggedUser) return true;
+
+      try {
+        await fetch('/api/online', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: loggedUser })
+        });
+        return true;
+      } catch {
+        return false;
+      }
     }
 
     async function loadOnlineUsers() {
@@ -1099,7 +1098,88 @@
         const data = await res.json();
         document.getElementById("onlineUsers").textContent =
           Array.isArray(data) && data.length ? data.map(u => u.name).join(", ") : "0";
-      } catch {}
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    // ==========================
+    // ✅ SAFE MODE POLLING MANAGER
+    // ==========================
+    const pollState = {
+      messages: { fails: 0, timer: null },
+      online:   { fails: 0, timer: null },
+      typing:   { fails: 0, timer: null },
+      hb:       { fails: 0, timer: null },
+    };
+
+    function jitter(ms) {
+      return ms + Math.floor(Math.random() * 500); // +0..500ms
+    }
+
+    function backoffDelay(baseMs, fails, maxMs) {
+      const cappedFails = Math.min(fails, 6); // evita explodir infinito
+      const d = baseMs * Math.pow(2, cappedFails);
+      return jitter(Math.min(d, maxMs));
+    }
+
+    function baseIntervals() {
+      const hidden = document.hidden;
+      return {
+        messages: hidden ? 15000 : 3000,
+        online:   hidden ? 20000 : 5000,
+        typing:   hidden ? 3000  : 900,
+        hb:       hidden ? 15000 : 5000,
+      };
+    }
+
+    function stopAllPolls() {
+      Object.values(pollState).forEach(s => {
+        if (s.timer) clearTimeout(s.timer);
+        s.timer = null;
+        s.fails = 0;
+      });
+    }
+
+    function scheduleLoop(key, taskFn, maxMs) {
+      const base = baseIntervals()[key];
+
+      const run = async () => {
+        const ok = await taskFn();
+        if (ok) pollState[key].fails = 0;
+        else pollState[key].fails += 1;
+
+        const delay = ok ? jitter(base) : backoffDelay(base, pollState[key].fails, maxMs);
+        pollState[key].timer = setTimeout(run, delay);
+      };
+
+      // start now (small jitter to desync)
+      pollState[key].timer = setTimeout(run, Math.floor(Math.random() * 300));
+    }
+
+    function startAllPolls() {
+      stopAllPolls();
+
+      // mensagens: se falhar, faz backoff até 60s
+      scheduleLoop("messages", async () => {
+        return await loadMessages();
+      }, 60000);
+
+      // online list: backoff até 60s
+      scheduleLoop("online", async () => {
+        return await loadOnlineUsers();
+      }, 60000);
+
+      // typing status: backoff até 15s (não precisa exagerar)
+      scheduleLoop("typing", async () => {
+        return await loadTypingStatus();
+      }, 15000);
+
+      // heartbeat online: backoff até 60s
+      scheduleLoop("hb", async () => {
+        return await updateOnlineStatus();
+      }, 60000);
     }
 
     // ---------- Init ----------
@@ -1141,20 +1221,28 @@
       contentInput.addEventListener("focus", () => onUserTyping());
       contentInput.addEventListener("blur", () => sendTyping(false));
 
+      // ✅ quando trocar aba/janela, ajusta os tempos automaticamente (sem quebrar nada)
+      document.addEventListener("visibilitychange", () => {
+        // parar e religar com intervalos novos (foreground/background)
+        startAllPolls();
+        if (!document.hidden) {
+          // quando voltar pro app, puxa na hora
+          loadMessages({ forceScrollBottom: false });
+          loadOnlineUsers();
+          loadTypingStatus();
+        }
+      });
+
       setHeader();
       renderReplyBar();
 
+      // start safe polling
+      startAllPolls();
+
+      // primeiro carregamento imediato
       loadMessages();
-      setInterval(() => loadMessages(), 3000);
-
-      updateOnlineStatus();
-      setInterval(updateOnlineStatus, 5000);
-
       loadOnlineUsers();
-      setInterval(loadOnlineUsers, 5000);
-
       loadTypingStatus();
-      setInterval(loadTypingStatus, 900);
     });
   </script>
 </body>
