@@ -78,7 +78,20 @@ body {
     color: #e6edf3;
 }
 
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
 .warning-text { color: #ffffff; }
+
+#typingStatus {
+    font-size: 12px;
+    font-weight: 500;
+    color: #8b949e;
+    min-height: 14px; /* evita "pular" layout */
+}
 
 .admin-link {
     text-decoration: none;
@@ -330,7 +343,10 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 
     <div class="container">
         <div class="header">
-            <span class="warning-text" id="headerTitle">Mensagens com 24 horas de envio serão apagadas todos os dias à meia-noite.</span>
+            <div class="header-left">
+                <span class="warning-text" id="headerTitle">Mensagens com 24 horas de envio serão apagadas todos os dias à meia-noite.</span>
+                <span id="typingStatus"></span>
+            </div>
             <a href="https://6bh1xntg0kegg8kp.vercel.app/" class="admin-link">🔒</a>
         </div>
         <div class="messages" id="messages"></div>
@@ -351,6 +367,10 @@ let isSending = false;
 let chatMode = "public"; // "public" | "dm"
 let currentRoom = null;
 let currentOther = null;
+
+let typingStopTimer = null;
+let typingDebounceTimer = null;
+let lastTypingSentAt = 0;
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
@@ -420,13 +440,14 @@ function loadEmojis() {
             const textarea = document.getElementById("content");
             textarea.value += emoji;
             textarea.focus();
+            onUserTyping(); // conta como digitar
         };
         panel.appendChild(span);
     });
 }
 loadEmojis();
 
-/* PASTE DE IMAGEM (AGORA TAMBÉM EM DM) */
+/* PASTE DE IMAGEM (PUBLIC + DM) */
 document.addEventListener("DOMContentLoaded", () => {
     const contentInput = document.getElementById("content");
     if (!contentInput) return;
@@ -464,6 +485,7 @@ async function uploadImage(file) {
             textarea.value += (textarea.value.trim() ? "\n" : "") + "🖼 [Imagem pronta para envio]";
             textarea.focus();
             showOverlay("Imagem pronta para envio ✅", "success");
+            onUserTyping();
         } else {
             showOverlay("Falha no upload da imagem ❌", "error");
         }
@@ -494,6 +516,108 @@ function parseEnterRoom(text) {
 }
 function isLeaveCommand(text) {
     return /^\/sair\s*$/.test(text);
+}
+
+/* DIGITANDO */
+async function sendTyping(isTyping) {
+    if (!loggedUser) return;
+
+    // evita flood: no máximo 1 update a cada 800ms
+    const now = Date.now();
+    if (isTyping && now - lastTypingSentAt < 800) return;
+
+    lastTypingSentAt = now;
+
+    const room = (chatMode === "dm" && currentRoom) ? currentRoom : null;
+
+    try {
+        await fetch("/api/online", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: loggedUser,
+                typing: !!isTyping,
+                room
+            })
+        });
+    } catch {}
+}
+
+function onUserTyping() {
+    // debounce curto pra não spammar a API
+    clearTimeout(typingDebounceTimer);
+    typingDebounceTimer = setTimeout(() => {
+        sendTyping(true);
+    }, 180);
+
+    // se parar de digitar por 2.2s, manda typing=false
+    clearTimeout(typingStopTimer);
+    typingStopTimer = setTimeout(() => {
+        sendTyping(false);
+    }, 2200);
+}
+
+function clearTypingUI() {
+    const el = document.getElementById("typingStatus");
+    if (el) el.textContent = "";
+}
+
+function setTypingUI(names) {
+    const el = document.getElementById("typingStatus");
+    if (!el) return;
+
+    if (!names || !names.length) {
+        el.textContent = "";
+        return;
+    }
+
+    if (names.length === 1) {
+        el.textContent = `${names[0]} está digitando...`;
+        return;
+    }
+
+    if (names.length === 2) {
+        el.textContent = `${names[0]} e ${names[1]} estão digitando...`;
+        return;
+    }
+
+    el.textContent = `${names.slice(0, 3).join(", ")} estão digitando...`;
+}
+
+async function loadTypingStatus() {
+    try {
+        const res = await fetch("/api/online");
+        const data = await res.json();
+        const users = Array.isArray(data) ? data : [];
+
+        const now = Date.now();
+
+        // quem está "digitando" nos últimos 3s
+        const typingUsers = users.filter(u => {
+            if (!u || !u.name) return false;
+            if (u.name === loggedUser) return false;
+            if (!u.typing) return false;
+            if (!u.last_typing) return false;
+
+            const last = new Date(u.last_typing).getTime();
+            if (now - last > 3000) return false;
+
+            // em DM: só mostra quem está digitando na mesma sala
+            if (chatMode === "dm" && currentRoom) {
+                return u.typing_room === currentRoom;
+            }
+
+            // em público: só mostra quem está digitando no público
+            return !u.typing_room;
+        });
+
+        const names = typingUsers.map(u => u.name);
+
+        // em DM, normalmente só 1 pessoa — mas mantém robusto
+        setTypingUI(names);
+    } catch {
+        clearTypingUI();
+    }
 }
 
 /* MENSAGENS - PÚBLICO */
@@ -535,7 +659,7 @@ async function loadPublicMessages(options = {}) {
             const color = getColorFromName(msg.name);
 
             const contentHTML = msg.image_url
-                ? `<a href="${msg.image_url}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
+                ? `<a href="${escapeHTML(msg.image_url)}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
                 : highlightMentions(msg.content);
 
             div.innerHTML = `
@@ -659,6 +783,8 @@ async function enterRoom(room) {
         currentOther = data.channel.other;
 
         setHeader();
+        clearTypingUI();
+        await sendTyping(false); // reset typing no modo anterior
         await loadMessages({ forceScrollBottom: true });
         showOverlay(`Entrou na sala "${currentRoom}" ✅`, "success");
     } catch {
@@ -671,6 +797,9 @@ async function leaveRoom() {
         showOverlay("Você não está em uma sala privada.", "info");
         return;
     }
+
+    // para sinalizar que parou de digitar na sala
+    await sendTyping(false);
 
     try {
         await fetch("/api/dm/leave", {
@@ -686,6 +815,7 @@ async function leaveRoom() {
     currentOther = null;
 
     setHeader();
+    clearTypingUI();
     await loadMessages({ forceScrollBottom: true });
     showOverlay(`Saiu da sala "${left}" ✅`, "success");
 }
@@ -732,9 +862,6 @@ async function sendDmMessage(text) {
     pendingImageUrl = null;
 
     await loadMessages({ forceScrollBottom: true });
-
-    // overlay opcional quando foi imagem
-    // if (pendingImageUrl) showOverlay("Imagem enviada ✅", "success");
 }
 
 async function sendMessage() {
@@ -744,7 +871,6 @@ async function sendMessage() {
     const sendButton = document.querySelector(".send-btn");
     const text = contentInput.value.trim();
 
-    // comandos sempre
     const create = parseCreateRoom(text);
     const enter = parseEnterRoom(text);
 
@@ -768,7 +894,6 @@ async function sendMessage() {
         return;
     }
 
-    // agora: permite enviar só imagem em DM também
     if (!text && !pendingImageUrl) return;
 
     isSending = true;
@@ -777,6 +902,9 @@ async function sendMessage() {
     sendButton.style.cursor = "not-allowed";
 
     try {
+        // ao enviar, normalmente a pessoa "para de digitar"
+        await sendTyping(false);
+
         if (chatMode === "dm") {
             await sendDmMessage(text);
         } else {
@@ -817,6 +945,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const miniProfile = document.getElementById("mini-profile");
     const dropdownMenu = document.getElementById("dropdown-menu");
     const arrow = document.getElementById("arrow");
+    const contentInput = document.getElementById("content");
 
     document.getElementById("user-phone").textContent = loggedUser;
 
@@ -833,16 +962,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    document.getElementById("logout").onclick = () => {
+    document.getElementById("logout").onclick = async () => {
+        try { await sendTyping(false); } catch {}
         sessionStorage.clear();
         window.location.href = "index.html";
     };
 
-    document.getElementById("content").addEventListener("keydown", e => {
+    contentInput.addEventListener("keydown", e => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
+        } else {
+            // qualquer tecla "normal" conta como digitando
+            if (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete") {
+                onUserTyping();
+            }
         }
+    });
+
+    // também conta quando colar texto
+    contentInput.addEventListener("input", () => {
+        if (contentInput.value.length) onUserTyping();
+    });
+
+    contentInput.addEventListener("blur", () => {
+        sendTyping(false);
     });
 
     setHeader();
@@ -855,6 +999,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     loadOnlineUsers();
     setInterval(loadOnlineUsers, 5000);
+
+    // typing status atualiza mais rápido pra ficar "vivo"
+    loadTypingStatus();
+    setInterval(loadTypingStatus, 900);
 });
 </script>
 </body>
