@@ -341,7 +341,7 @@ const loggedUser = sessionStorage.getItem("loggedUser");
 let lastMessageId = null;
 let pendingImageUrl = null;
 let isSending = false;
-let currentPrivateChannel = null; // canal privado atual
+let currentPrivateChannel = null; // canal privado em que o usuário entrou
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
@@ -369,7 +369,8 @@ function highlightMentions(text) {
 /* VISIBILIDADE DE MENSAGEM */
 function canUserSeeMessage(msg) {
     if (!msg.to) return true; // mensagem normal
-    return msg.to === loggedUser || msg.name === loggedUser; // sussurro
+    if (msg.channel_id && currentPrivateChannel && msg.channel_id !== currentPrivateChannel.id) return false;
+    return msg.to === loggedUser || msg.name === loggedUser;
 }
 
 /* EMOJIS */
@@ -443,88 +444,65 @@ function parseWhisper(text) {
     return { to: null, content: text };
 }
 
-/* COMANDOS DE CHAT PRIVADO */
-async function handlePrivateCommands(text) {
-    const trimmed = text.trim();
+/* CRIAÇÃO DE CANAL PRIVADO */
+async function createPrivateChannel(targetUser) {
+    try {
+        const res = await fetch("/api/dm/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user1: loggedUser, user2: targetUser })
+        });
+        const data = await res.json();
 
-// Criar canal privado
-if (trimmed.startsWith("/c ")) {
-    const match = trimmed.match(/^\/c\s+@(\w+)$/);
-    if (match) {
-        const otherUser = match[1];
-        try {
-            // Cria o canal privado via API
-            const res = await fetch('/api/dm/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user1: loggedUser, user2: otherUser })
+        if (data.channel) {
+            currentPrivateChannel = data.channel;
+            showOverlay(`Canal privado criado com @${targetUser}`, "success");
+
+            // envia sussurro para o outro usuário via Sistema
+            await fetch("/api/messages", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: "Sistema",
+                    content: `@${loggedUser} criou um canal privado com você. Digite /entrar @${targetUser} para entrar.`,
+                    to: targetUser,
+                    channel_id: data.channel.id
+                })
             });
-            const data = await res.json();
-            if (data.channel) {
-                // ✅ Overlay para quem digitou
-                showOverlay(`Canal privado criado com sucesso com @${otherUser}.`, "success");
-
-                // 💌 Envia sussurro para a outra pessoa usando a conta "Sistema"
-await fetch('/api/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-        name: "Sistema",  // remetente fixo
-        content: `@${loggedUser} criou um canal privado com você. Digite /entrar @${otherUser} para entrar.`,
-        to: otherUser
-    })
-});
-            } else {
-                showOverlay(`Erro ao criar canal com @${otherUser}`, "error");
-            }
-        } catch (e) {
-            console.error(e);
-            showOverlay(`Erro ao criar canal com @${otherUser}`, "error");
+        } else {
+            showOverlay("Falha ao criar canal", "error");
         }
-        return true;
+    } catch (e) {
+        console.error(e);
+        showOverlay("Erro ao criar canal", "error");
     }
 }
 
-    // Entrar no canal privado
-    if (trimmed.startsWith("/entrar ")) {
-        const match = trimmed.match(/^\/entrar\s+@(\w+)$/);
-        if (match) {
-            const otherUser = match[1];
-            try {
-                const res = await fetch('/api/dm/join', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user1: loggedUser, user2: otherUser })
-                });
-                const data = await res.json();
-                if (data.channel) {
-                    currentPrivateChannel = data.channel;
-                    showOverlay(`Entrou no canal privado com @${otherUser}`, "success");
-                    await loadMessages({ forceScrollBottom: true });
-                } else {
-                    showOverlay(`Canal privado com @${otherUser} não encontrado`, "error");
-                }
-            } catch (e) {
-                console.error(e);
-                showOverlay(`Erro ao entrar no canal com @${otherUser}`, "error");
-            }
-            return true;
-        }
-    }
+/* ENTRAR EM CANAL PRIVADO */
+async function enterPrivateChannel(targetUser) {
+    try {
+        const res = await fetch(`/api/dm/get?user1=${loggedUser}&user2=${targetUser}`);
+        const data = await res.json();
 
-    // Sair do canal privado
-    if (trimmed === "/sair") {
-        if (currentPrivateChannel) {
-            currentPrivateChannel = null;
-            showOverlay("Saiu do canal privado", "info");
+        if (data.channel) {
+            currentPrivateChannel = data.channel;
+            showOverlay(`Você entrou no canal privado com @${targetUser}`, "success");
             await loadMessages({ forceScrollBottom: true });
         } else {
-            showOverlay("Não está em nenhum canal privado", "info");
+            showOverlay("Canal não encontrado", "error");
         }
-        return true;
+    } catch (e) {
+        console.error(e);
+        showOverlay("Erro ao entrar no canal", "error");
     }
+}
 
-    return false; // não era comando privado
+/* SAIR DO CANAL PRIVADO */
+function leavePrivateChannel() {
+    if (!currentPrivateChannel) return;
+    currentPrivateChannel = null;
+    showOverlay("Você saiu do canal privado", "info");
+    loadMessages({ forceScrollBottom: true });
 }
 
 /* MENSAGENS */
@@ -532,16 +510,12 @@ async function loadMessages(options = {}) {
     const { forceScrollBottom = false } = options;
 
     try {
-        const res = await fetch(currentPrivateChannel 
-            ? `/api/dm/messages?channel_id=${currentPrivateChannel.id}` 
-            : '/api/messages');
+        const res = await fetch('/api/messages');
         const data = await res.json();
-
         const visibleMessages = data.filter(msg => canUserSeeMessage(msg));
 
         if (visibleMessages.length) {
             const lastVisible = visibleMessages[visibleMessages.length - 1];
-
             if (lastMessageId && lastVisible.id !== lastMessageId) {
                 const mentioned = lastVisible.content?.includes("@" + loggedUser);
                 if (lastVisible.name !== loggedUser || mentioned) {
@@ -559,13 +533,10 @@ async function loadMessages(options = {}) {
 
         box.innerHTML = '';
 
-        data.forEach(msg => {
+        visibleMessages.forEach(msg => {
             const isWhisper = msg.to !== null;
-            if (!canUserSeeMessage(msg)) return;
-
             const div = document.createElement('div');
             div.className = 'message' + (isWhisper ? ' whisper' : '');
-
             const date = new Date(msg.created_at).toLocaleString('pt-BR');
             const color = getColorFromName(msg.name);
 
@@ -580,7 +551,6 @@ async function loadMessages(options = {}) {
                 </div>
                 <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
             `;
-
             box.appendChild(div);
         });
 
@@ -590,29 +560,44 @@ async function loadMessages(options = {}) {
             const heightDiff = box.scrollHeight - previousScrollHeight;
             box.scrollTop = previousScrollTop + heightDiff;
         }
+
     } catch (e) {
         console.error("Erro ao carregar mensagens:", e);
     }
 }
 
-/* ENVIO */
+/* ENVIO DE MENSAGENS */
 async function sendMessage() {
     if (isSending) return;
 
     const contentInput = document.getElementById('content');
     const sendButton = document.querySelector(".send-btn");
-    const text = contentInput.value.trim();
+    let text = contentInput.value.trim();
 
     if (!text && !pendingImageUrl) return;
 
-    // PROCESSAR COMANDOS PRIVADOS
-    const wasPrivateCommand = await handlePrivateCommands(text);
-    if (wasPrivateCommand) {
+    const whisperMatch = parseWhisper(text);
+
+    // trata comandos de DM /c /entrar /sair
+    if (text.startsWith("/c ")) {
+        const target = text.match(/@(\w+)/)?.[1];
+        if (target) createPrivateChannel(target);
         contentInput.value = "";
         return;
     }
 
-    const { to, content } = parseWhisper(text);
+    if (text.startsWith("/entrar ")) {
+        const target = text.match(/@(\w+)/)?.[1];
+        if (target) enterPrivateChannel(target);
+        contentInput.value = "";
+        return;
+    }
+
+    if (text === "/sair") {
+        leavePrivateChannel();
+        contentInput.value = "";
+        return;
+    }
 
     isSending = true;
     sendButton.disabled = true;
@@ -620,17 +605,15 @@ async function sendMessage() {
     sendButton.style.cursor = "not-allowed";
 
     try {
-        const channelId = currentPrivateChannel ? currentPrivateChannel.id : null;
-
-        await fetch(channelId ? '/api/dm/send' : '/api/messages', {
+        await fetch('/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name: loggedUser,
-                content: content || "🖼 Imagem",
+                content: whisperMatch.content || "🖼 Imagem",
                 image_url: pendingImageUrl,
-                to,
-                channel_id: channelId
+                to: whisperMatch.to,
+                channel_id: currentPrivateChannel?.id || null
             })
         });
 
@@ -638,10 +621,10 @@ async function sendMessage() {
         pendingImageUrl = null;
         await loadMessages({ forceScrollBottom: true });
 
-        if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
+        if (whisperMatch.to) showOverlay(`Sussurro enviado para @${whisperMatch.to}`, "success");
     } catch (e) {
-        console.error("Erro ao enviar mensagem:", e);
-        if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
+        console.error(e);
+        if (whisperMatch.to) showOverlay(`Falha ao enviar sussurro para @${whisperMatch.to}`, "error");
     } finally {
         isSending = false;
         sendButton.disabled = false;
@@ -656,7 +639,6 @@ function showOverlay(msg, type = "info") {
     overlay.className = `overlay ${type}`;
     overlay.textContent = msg;
     document.body.appendChild(overlay);
-
     setTimeout(() => {
         overlay.style.opacity = "0";
         setTimeout(() => overlay.remove(), 400);
@@ -726,6 +708,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 </body>
 </html>
+
 
 
 
