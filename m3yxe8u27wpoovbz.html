@@ -359,18 +359,20 @@ if (!loggedUser) {
     window.location.href = "index.html";
 }
 
-/* ========================= */
-
-let lastMessageId = null;
-let pendingImageUrl = null;
+/* =========================
+   ESTADO
+========================= */
 let isSending = false;
-let currentPrivateChat = null; // 👈 CONTROLE DE CHAT PRIVADO
+let currentPrivateChannel = null;
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
-/* UTILIDADES */
+
+
+/* =========================
+   UTILIDADES
+========================= */
 function getColorFromName(name) {
-    if (!name) return "#ffffff";
     let hash = 0;
     for (let i = 0; i < name.length; i++)
         hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -383,6 +385,7 @@ function escapeHTML(str) {
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
     }[m]));
 }
+
 
 function highlightMentions(text) {
     if (!text) return "";
@@ -426,9 +429,10 @@ function loadEmojis() {
 }
 loadEmojis();
 
-/* MENSAGENS */
+/* =========================
+   LOAD MESSAGES
+========================= */
 async function loadMessages() {
-
     try {
 
         let res;
@@ -447,20 +451,21 @@ async function loadMessages() {
 
         data.forEach(msg => {
 
+            const sender = msg.name || msg.sender;
+            const content = msg.content || msg.message;
+
             const div = document.createElement("div");
             div.className = "message";
 
             const date = new Date(msg.created_at).toLocaleString("pt-BR");
-            const color = getColorFromName(msg.name || msg.sender);
+            const color = getColorFromName(sender);
 
             div.innerHTML = `
                 <div class="message-header">
-                    <span style="color:${color}">
-                        ${escapeHTML(msg.name || msg.sender)}
-                    </span>
+                    <span style="color:${color}">${escapeHTML(sender)}</span>
                     <span class="timestamp">${date}</span>
                 </div>
-                <div>${escapeHTML(msg.content || msg.message)}</div>
+                <div>${escapeHTML(content)}</div>
             `;
 
             box.appendChild(div);
@@ -469,10 +474,14 @@ async function loadMessages() {
         box.scrollTop = box.scrollHeight;
 
     } catch (err) {
-        console.error(err);
+        console.error("Erro ao carregar mensagens:", err);
     }
 }
-/* ENVIO */
+
+
+/* =========================
+   ENVIO + COMANDOS
+========================= */
 async function sendMessage() {
 
     if (isSending) return;
@@ -485,12 +494,14 @@ async function sendMessage() {
 
     try {
 
-        /* ===== COMANDOS ===== */
-
-        // SUSSURRO
+        /* ===== SUSSURRO ===== */
         if (text.startsWith("/s ")) {
+
             const match = text.match(/^\/s\s@(\w+)\s(.+)/);
-            if (!match) return;
+            if (!match) {
+                isSending = false;
+                return;
+            }
 
             const toUser = match[1];
             const message = match[2];
@@ -507,10 +518,14 @@ async function sendMessage() {
 
         }
 
-        // CRIAR CHAT PRIVADO
+        /* ===== CRIAR DM ===== */
         else if (text.startsWith("/c ")) {
+
             const match = text.match(/^\/c\s@(\w+)/);
-            if (!match) return;
+            if (!match) {
+                isSending = false;
+                return;
+            }
 
             const user2 = match[1];
 
@@ -524,17 +539,19 @@ async function sendMessage() {
             });
 
             const data = await res.json();
-
             currentPrivateChannel = data.channel_id;
-            currentPrivateUser = user2;
 
             alert("Chat privado criado com @" + user2);
         }
 
-        // ENTRAR CHAT PRIVADO
+        /* ===== ENTRAR DM ===== */
         else if (text.startsWith("/entrar ")) {
+
             const match = text.match(/^\/entrar\s@(\w+)/);
-            if (!match) return;
+            if (!match) {
+                isSending = false;
+                return;
+            }
 
             const user1 = match[1];
 
@@ -548,14 +565,12 @@ async function sendMessage() {
             });
 
             const data = await res.json();
-
             currentPrivateChannel = data.channel_id;
-            currentPrivateUser = user1;
 
             alert("Você entrou no chat privado com @" + user1);
         }
 
-        // SAIR CHAT PRIVADO
+        /* ===== SAIR DM ===== */
         else if (text === "/sair") {
 
             await fetch("/api/dm/leave", {
@@ -568,12 +583,10 @@ async function sendMessage() {
             });
 
             currentPrivateChannel = null;
-            currentPrivateUser = null;
-
             alert("Você saiu do chat privado.");
         }
 
-        // MENSAGEM NORMAL
+        /* ===== MENSAGEM NORMAL ===== */
         else {
 
             if (currentPrivateChannel) {
@@ -607,129 +620,16 @@ async function sendMessage() {
         loadMessages();
 
     } catch (err) {
-        console.error(err);
+        console.error("Erro ao enviar:", err);
     }
 
     isSending = false;
 }
 
-    /* =========================
-       COMANDOS
-    ========================= */
-
-    // /s @nome mensagem
-    if (text.startsWith("/s ")) {
-        const match = text.match(/^\/s\s+@(\w+)\s+(.+)/);
-        if (match) {
-            const toUser = match[1];
-            const message = match[2];
-
-            await fetch("/api/messages", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: loggedUser,
-                    content: message,
-                    to: toUser
-                })
-            });
-
-            contentInput.value = "";
-            loadMessages({ forceScrollBottom: true });
-        }
-        return;
-    }
-
-    // /c @PessoaB  -> cria chat privado
-    if (text.startsWith("/c ")) {
-        const match = text.match(/^\/c\s+@(\w+)/);
-        if (match) {
-            const otherUser = match[1];
-
-            const res = await fetch("/api/create-private-channel", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    user1: loggedUser,
-                    user2: otherUser
-                })
-            });
-
-            const data = await res.json();
-            currentPrivateChat = data.channel_id;
-            contentInput.value = "";
-            loadMessages();
-        }
-        return;
-    }
-
-    // /entrar @PessoaA
-    if (text.startsWith("/entrar ")) {
-        const match = text.match(/^\/entrar\s+@(\w+)/);
-        if (match) {
-            const creator = match[1];
-
-            const res = await fetch(`/api/get-private-channel?user1=${creator}&user2=${loggedUser}`);
-            const data = await res.json();
-
-            if (data.channel_id) {
-                currentPrivateChat = data.channel_id;
-                loadMessages();
-            }
-            contentInput.value = "";
-        }
-        return;
-    }
-
-    // /sair
-    if (text === "/sair") {
-        currentPrivateChat = null;
-        contentInput.value = "";
-        loadMessages();
-        return;
-    }
-
- /* =========================
-       ENVIO NORMAL
-    ========================= */
-
-    isSending = true;
-
-    try {
-        if (currentPrivateChat) {
-            await fetch("/api/send-private-message", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    channel_id: currentPrivateChat,
-                    sender: loggedUser,
-                    message: text
-                })
-            });
-        } else {
-            await fetch("/api/messages", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: loggedUser,
-                    content: text,
-                    to: null
-                })
-            });
-        }
-
-        contentInput.value = "";
-        loadMessages({ forceScrollBottom: true });
-
-    } catch (e) {
-        console.error("Erro ao enviar:", e);
-    } finally {
-        isSending = false;
-    }
-}
-
     
-/* ONLINE */
+/* =========================
+   ONLINE
+========================= */
 async function updateOnlineStatus() {
     if (!loggedUser) return;
     await fetch("/api/online", {
@@ -751,7 +651,9 @@ async function loadOnlineUsers() {
     } catch {}
 }
 
-/* INIT */
+/* =========================
+   INIT
+========================= */
 document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("user-phone").textContent = loggedUser;
@@ -781,5 +683,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 </body>
 </html>
+
 
 
