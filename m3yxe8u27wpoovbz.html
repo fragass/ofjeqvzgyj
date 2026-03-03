@@ -384,9 +384,9 @@
     let currentRoom = null;
     let currentOther = null;
 
-    // reply state (works for public + dm)
+    // reply state
     let replyState = null; // { id, preview: {id,name,snippet,hasImage,created_at} }
-    let lastRenderedElements = []; // to clear selection quickly
+    let lastRenderedElements = [];
 
     // typing
     let typingDebounceTimer = null;
@@ -489,7 +489,6 @@
     function setReplyFromMessage(msg, element) {
       if (!msg || !msg.id) return;
 
-      // snapshot do preview (sempre)
       const text = (msg.content || msg.message || "").trim();
       const hasImage = !!msg.image_url;
       const snippet = text
@@ -580,16 +579,51 @@
       return { to: null, content: text };
     }
 
+    // ✅ NOVO: aceita nomes com espaços e converte pra um nome válido (slug)
+    function normalizeRoomName(roomRaw) {
+      let room = (roomRaw || "").trim();
+
+      // espaços -> hífen
+      room = room.replace(/\s+/g, "-");
+
+      // remove chars fora do permitido
+      room = room.replace(/[^A-Za-z0-9_-]/g, "");
+
+      // tamanho máx
+      room = room.slice(0, 32);
+
+      return room;
+    }
+
+    // ✅ NOVO: /c @user QUALQUER NOME AQUI
     function parseCreateRoom(text) {
-      const match = text.match(/^\/c\s+@(\w+)\s+([A-Za-z0-9_-]{3,32})$/);
+      const match = text.match(/^\/c\s+@(\w+)\s+(.+)$/);
       if (!match) return null;
-      return { target: match[1], room: match[2] };
+
+      const target = match[1];
+      const roomRaw = match[2];
+
+      const room = normalizeRoomName(roomRaw);
+
+      // se ficou inválido
+      if (!room || room.length < 3) return { target, room: null, roomRaw };
+
+      return { target, room, roomRaw };
     }
+
+    // ✅ NOVO: /entrar QUALQUER NOME AQUI
     function parseEnterRoom(text) {
-      const match = text.match(/^\/entrar\s+([A-Za-z0-9_-]{3,32})$/);
+      const match = text.match(/^\/entrar\s+(.+)$/);
       if (!match) return null;
-      return { room: match[1] };
+
+      const roomRaw = match[1];
+      const room = normalizeRoomName(roomRaw);
+
+      if (!room || room.length < 3) return { room: null, roomRaw };
+
+      return { room, roomRaw };
     }
+
     function isLeaveCommand(text) {
       return /^\/sair\s*$/.test(text);
     }
@@ -929,8 +963,6 @@
           content: content || "🖼 Imagem",
           image_url: pendingImageUrl,
           to,
-
-          // reply
           reply_to: replyState?.id ?? null,
           reply_preview: replyState?.preview ?? null,
         })
@@ -956,8 +988,6 @@
           sender: loggedUser,
           message: text,
           image_url: pendingImageUrl,
-
-          // reply
           reply_to: replyState?.id ?? null,
           reply_preview: replyState?.preview ?? null,
         })
@@ -980,17 +1010,42 @@
       const create = parseCreateRoom(text);
       const enter = parseEnterRoom(text);
 
+      // ✅ create room (agora aceita espaços no nome)
       if (create) {
         contentInput.value = "";
+
+        if (!create.room) {
+          showOverlay('Nome da sala inválido. Use letras/números e pelo menos 3 caracteres.', "error");
+          onUserTyping();
+          return;
+        }
+
+        if (create.roomRaw && create.roomRaw.trim() !== create.room) {
+          showOverlay(`Nome da sala ajustado para: "${create.room}"`, "info");
+        }
+
         showOverlay(`Abrindo sala com @${create.target}...`, "info");
         await createRoom(create.target, create.room);
         onUserTyping();
         return;
       }
 
+      // ✅ enter room (agora aceita espaços no nome)
       if (enter) {
         contentInput.value = "";
-        showOverlay(`Entrando em "${enter.room}"...`, "info");
+
+        if (!enter.room) {
+          showOverlay('Nome da sala inválido. Use letras/números e pelo menos 3 caracteres.', "error");
+          onUserTyping();
+          return;
+        }
+
+        if (enter.roomRaw && enter.roomRaw.trim() !== enter.room) {
+          showOverlay(`Entrando em: "${enter.room}"`, "info");
+        } else {
+          showOverlay(`Entrando em "${enter.room}"...`, "info");
+        }
+
         await enterRoom(enter.room);
         onUserTyping();
         return;
