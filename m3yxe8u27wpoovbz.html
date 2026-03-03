@@ -447,30 +447,41 @@ function parseWhisper(text) {
 async function handlePrivateCommands(text) {
     const trimmed = text.trim();
 
-    // Criar canal privado
-    if (trimmed.startsWith("/c ")) {
-        const match = trimmed.match(/^\/c\s+@(\w+)$/);
-        if (match) {
-            const otherUser = match[1];
-            try {
-                const res = await fetch('/api/dm/create', {
+// Criar canal privado
+if (trimmed.startsWith("/c ")) {
+    const match = trimmed.match(/^\/c\s+@(\w+)$/);
+    if (match) {
+        const otherUser = match[1];
+        try {
+            const res = await fetch('/api/dm/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user1: loggedUser, user2: otherUser })
+            });
+            const data = await res.json();
+            if (data.channel) {
+                // Notifica quem digitou
+                showOverlay(`Canal privado criado com @${otherUser}.`, "success");
+
+                // Notifica a outra pessoa para ela saber como entrar
+                await fetch('/api/dm/notify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user1: loggedUser, user2: otherUser })
+                    body: JSON.stringify({
+                        to: otherUser,
+                        message: `@${loggedUser} criou um canal privado com você. Digite /entrar @${loggedUser} para entrar.`
+                    })
                 });
-                const data = await res.json();
-                if (data.channel) {
-                    showOverlay(`Canal privado criado com @${otherUser}. Use /entrar @${otherUser} para entrar.`, "success");
-                } else {
-                    showOverlay(`Erro ao criar canal com @${otherUser}`, "error");
-                }
-            } catch (e) {
-                console.error(e);
+            } else {
                 showOverlay(`Erro ao criar canal com @${otherUser}`, "error");
             }
-            return true;
+        } catch (e) {
+            console.error(e);
+            showOverlay(`Erro ao criar canal com @${otherUser}`, "error");
         }
+        return true;
     }
+}
 
     // Entrar no canal privado
     if (trimmed.startsWith("/entrar ")) {
@@ -713,6 +724,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 </body>
 </html>
+
 
 
 
