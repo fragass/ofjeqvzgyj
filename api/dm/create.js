@@ -13,42 +13,47 @@ export default async function handler(req, res) {
 
     const body = req.body || {};
 
-    // compat com diferentes fronts/handlers
+    // Compat com diferentes formatos
     const creator = body.creator || body.name || body.user1;
     const target = body.target || body.to || body.user2;
-    const room = body.room;
+    const roomWanted = body.room;
 
-    if (!creator || !target || !room) {
+    if (!creator || !target || !roomWanted) {
       return res.status(400).json({
         success: false,
-        error: "Missing fields",
-        details: { creator, target, room }
+        error: "Dados incompletos. Use: /c @usuario NOME_DA_SALA",
       });
     }
 
-    if (!/^[A-Za-z0-9_-]{3,32}$/.test(room)) {
-      return res.status(400).json({ success: false, error: "Invalid room name" });
+    // ✅ Agora aceita letras + números + _ + -
+    if (!/^[A-Za-z0-9_-]{3,32}$/.test(roomWanted)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nome de sala inválido. Use 3 a 32 caracteres: letras, números, "_" ou "-".',
+      });
     }
 
     const channelsEndpoint = `${SUPABASE_URL}/rest/v1/private_channels`;
 
-    // (opcional) checa duplicado
-    const existsResp = await fetch(
-      `${channelsEndpoint}?select=id,room&room=eq.${encodeURIComponent(room)}`,
-      {
+    // Helper: buscar canal existente por dupla (qualquer ordem)
+    async function findExistingChannel() {
+      const url =
+        `${channelsEndpoint}?select=id,room,user1,user2` +
+        `&or=(and(user1.eq.${encodeURIComponent(creator)},user2.eq.${encodeURIComponent(target)}),and(user1.eq.${encodeURIComponent(target)},user2.eq.${encodeURIComponent(creator)}))` +
+        `&limit=1`;
+
+      const r = await fetch(url, {
         headers: {
           apikey: SUPABASE_SERVICE_ROLE_KEY,
           Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         },
-      }
-    );
+      });
 
-    const exists = await existsResp.json();
-    if (Array.isArray(exists) && exists.length) {
-      return res.status(409).json({ success: false, error: "Room already exists" });
+      const j = await r.json();
+      return Array.isArray(j) && j.length ? j[0] : null;
     }
 
-    // cria o canal
+    // Tenta inserir (vai falhar se já existir a dupla por causa do unique_channel)
     const insertResp = await fetch(channelsEndpoint, {
       method: "POST",
       headers: {
@@ -58,25 +63,52 @@ export default async function handler(req, res) {
         Prefer: "return=representation",
       },
       body: JSON.stringify({
-        room,
+        room: roomWanted,
         user1: creator,
         user2: target,
         last_activity: new Date().toISOString(),
       }),
     });
 
-    // ✅ aqui está o segredo: retornar o erro real
     const insertText = await insertResp.text();
 
     if (!insertResp.ok) {
+      let errObj = null;
+      try { errObj = JSON.parse(insertText); } catch {}
+
+      // ✅ Mensagem clara quando já existe DM entre a dupla
+      if (errObj && errObj.code === "23505") {
+        const existing = await findExistingChannel();
+        if (existing) {
+          return res.status(200).json({
+            success: true,
+            reused: true,
+            room: existing.room,
+            message: `Você já tem uma sala privada com @${target}. Vou abrir a existente: ${existing.room}`,
+            channel: existing,
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          reused: true,
+          room: null,
+          message: `Você já tem uma sala privada com @${target}. Use /entrar <nome_da_sala>.`,
+        });
+      }
+
       return res.status(500).json({
         success: false,
-        error: "Failed to create channel",
-        details: insertText
+        error: "Falha ao criar a sala.",
+        details: insertText,
       });
     }
 
-    // notifica via sussurro do "Sistema" (sem quebrar o create se falhar)
+    let created = null;
+    try { created = JSON.parse(insertText); } catch {}
+    const createdRow = Array.isArray(created) ? created[0] : created;
+
+    // Notifica via "Sistema" (não quebra se falhar)
     try {
       const messagesEndpoint = `${SUPABASE_URL}/rest/v1/messages`;
       await fetch(messagesEndpoint, {
@@ -90,20 +122,23 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           name: "Sistema",
           to: target,
-          content: `@${creator} criou a sala "${room}". Use /entrar ${room}`,
+          content: `@${creator} criou a sala "${roomWanted}". Use /entrar ${roomWanted}`,
         }),
       });
     } catch {}
 
-    let created = null;
-    try { created = JSON.parse(insertText); } catch {}
-
-    return res.status(200).json({ success: true, room, created });
+    return res.status(200).json({
+      success: true,
+      reused: false,
+      room: createdRow?.room || roomWanted,
+      message: `Sala "${roomWanted}" criada com @${target}.`,
+      channel: createdRow,
+    });
   } catch (e) {
     return res.status(500).json({
       success: false,
-      error: "Internal error",
-      details: String(e?.message || e)
+      error: "Erro interno no create.",
+      details: String(e?.message || e),
     });
   }
 }
