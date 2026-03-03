@@ -481,11 +481,20 @@ async function createPrivateChannel(targetUser) {
 /* ENTRAR EM CANAL PRIVADO */
 async function enterPrivateChannel(targetUser) {
     try {
-        const res = await fetch(`/api/dm/get?user1=${loggedUser}&user2=${targetUser}`);
+        const res = await fetch(`/api/dm/find?user1=${loggedUser}&user2=${targetUser}`);
         const data = await res.json();
 
-        if (data.channel) {
-            currentPrivateChannel = data.channel;
+        let channel = data.channel;
+
+        // Se não encontrou pelo user1=userA & user2=userB, tenta a ordem inversa
+        if (!channel) {
+            const res2 = await fetch(`/api/dm/find?user1=${targetUser}&user2=${loggedUser}`);
+            const data2 = await res2.json();
+            channel = data2.channel;
+        }
+
+        if (channel) {
+            currentPrivateChannel = channel;
             showOverlay(`Você entrou no canal privado com @${targetUser}`, "success");
             await loadMessages({ forceScrollBottom: true });
         } else {
@@ -708,6 +717,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 </body>
 </html>
+
 
 
 
