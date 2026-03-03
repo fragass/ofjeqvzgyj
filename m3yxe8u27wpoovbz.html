@@ -1,3 +1,4 @@
+<!-- m3yxe8u27wpoovbz.html -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -339,7 +340,6 @@
     let currentRoom = null;
     let currentOther = null;
 
-    // typing
     let typingDebounceTimer = null;
     let lastTypingSentAt = 0;
 
@@ -467,7 +467,6 @@
       return { to: null, content: text };
     }
 
-    // ✅ letras + números + _ + -
     function parseCreateRoom(text) {
       const match = text.match(/^\/c\s+@(\w+)\s+([A-Za-z0-9_-]{3,32})$/);
       if (!match) return null;
@@ -670,8 +669,13 @@
       return loadPublicMessages(options);
     }
 
-    // ✅ Agora: cria OU reaproveita, e entra automaticamente
     async function createRoom(target, room) {
+      // ✅ bloqueia /c @seu_proprio_nome ...
+      if (target === loggedUser) {
+        showOverlay("Você precisa marcar OUTRO usuário para criar uma sala. Ex: /c @fulano sala123", "error");
+        return;
+      }
+
       try {
         const res = await fetch("/api/dm/create", {
           method: "POST",
@@ -701,11 +705,9 @@
           return;
         }
 
-        // mensagem clara e auto-entrar
         if (data.message) showOverlay(data.message, data.reused ? "info" : "success");
-        const roomToEnter = data.room || room;
 
-        // entra automaticamente
+        const roomToEnter = data.room || room;
         await enterRoom(roomToEnter);
 
       } catch (e) {
@@ -920,7 +922,6 @@
         }
       });
 
-      // typing: foco + texto
       contentInput.addEventListener("input", () => onUserTyping());
       contentInput.addEventListener("focus", () => onUserTyping());
       contentInput.addEventListener("blur", () => sendTyping(false));
@@ -936,7 +937,6 @@
       loadOnlineUsers();
       setInterval(loadOnlineUsers, 5000);
 
-      // typing UI
       loadTypingStatus();
       setInterval(loadTypingStatus, 900);
     });
