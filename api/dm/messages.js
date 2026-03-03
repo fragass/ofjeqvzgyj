@@ -68,10 +68,18 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      const { room, sender, message } = req.body || {};
+      const { room, sender, message, image_url } = req.body || {};
 
-      if (!isValidRoom(room) || !isValidName(sender) || typeof message !== "string" || !message.trim()) {
+      if (!isValidRoom(room) || !isValidName(sender)) {
         return res.status(400).json({ success: false, error: "Invalid fields" });
+      }
+
+      const msgText = typeof message === "string" ? message.trim() : "";
+      const imgUrl = typeof image_url === "string" && image_url.trim() ? image_url.trim() : null;
+
+      // Agora permite: mensagem OU imagem (ou ambos)
+      if (!msgText && !imgUrl) {
+        return res.status(400).json({ success: false, error: "Empty message" });
       }
 
       const channel = await getChannelByRoom(room);
@@ -80,14 +88,14 @@ export default async function handler(req, res) {
       const allowed = channel.user1 === sender || channel.user2 === sender;
       if (!allowed) return res.status(403).json({ success: false, error: "Not allowed" });
 
-      const { error: insErr } = await supabase.from("private_messages").insert([
-        {
-          channel_id: channel.id,
-          sender,
-          message: message.trim(),
-        },
-      ]);
+      const payload = {
+        channel_id: channel.id,
+        sender,
+        message: msgText || (imgUrl ? "🖼 Imagem" : ""),
+      };
+      if (imgUrl) payload.image_url = imgUrl;
 
+      const { error: insErr } = await supabase.from("private_messages").insert([payload]);
       if (insErr) return res.status(500).json({ success: false, error: "Insert failed" });
 
       await supabase
