@@ -22,29 +22,39 @@ export default async function handler(req, res) {
 
       const online = (Array.isArray(data) ? data : []).filter((user) => {
         const last = new Date(user.last_seen).getTime();
-        return now - last < 15000; // 15s tolerância
+        return now - last < 15000; // 15 segundos tolerância
       });
 
       return res.status(200).json(online);
     }
 
     if (req.method === "POST") {
-      const { name, typing = false, room = null } = req.body || {};
+      const body = req.body || {};
+      const name = body.name;
 
       if (!name) {
         return res.status(200).json({ success: false }); // fail silent
       }
+
+      const hasTyping = Object.prototype.hasOwnProperty.call(body, "typing");
+      const hasRoom = Object.prototype.hasOwnProperty.call(body, "room");
 
       const payload = {
         name,
         last_seen: new Date().toISOString(),
       };
 
-      // typing é opcional (não quebra quem não manda)
-      if (typeof typing === "boolean") {
-        payload.typing = typing;
-        payload.typing_room = typing ? (room || null) : null;
-        if (typing) payload.last_typing = new Date().toISOString();
+      // ✅ Só atualiza typing se o frontend mandou typing explicitamente
+      if (hasTyping && typeof body.typing === "boolean") {
+        payload.typing = body.typing;
+
+        // room só faz sentido quando typing=true (pra DM)
+        const room = hasRoom ? body.room : null;
+        payload.typing_room = body.typing ? (room || null) : null;
+
+        if (body.typing) {
+          payload.last_typing = new Date().toISOString();
+        }
       }
 
       await fetch(endpoint, {
