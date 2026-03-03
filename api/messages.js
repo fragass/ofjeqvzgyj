@@ -1,4 +1,3 @@
-
 export default async function handler(req, res) {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -29,13 +28,13 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "POST") {
-    const { name, content, image_url, to = null } = req.body; // <-- garante 'to' mesmo null
+    const { name, content, image_url, to = null } = req.body;
 
     if (!name || !content) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const body = { name, content, to }; // <-- envia 'to' sempre, nullable
+    const body = { name, content, to };
     if (image_url) body.image_url = image_url;
 
     try {
@@ -63,4 +62,3 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ error: "Method not allowed" });
 }
-
