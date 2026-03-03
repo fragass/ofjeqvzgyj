@@ -337,114 +337,258 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 </div>
 
 <script>
-/* ============================
-   🔐 RECUPERA LOGGED USER
-============================ */
+/* =========================
+   LOGGED USER SEGURO
+========================= */
 let loggedUser = null;
 
-(function () {
+try {
     const raw = sessionStorage.getItem("loggedUser");
-    if (!raw) return;
-
-    try {
+    if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.name) {
-            loggedUser = parsed;
-        }
-    } catch (e) {
-        console.error("Erro ao parsear loggedUser");
+        loggedUser = typeof parsed === "object" && parsed.name
+            ? parsed.name
+            : parsed;
     }
-})();
+} catch {
+    loggedUser = sessionStorage.getItem("loggedUser");
+}
 
 if (!loggedUser) {
-    alert("Sessão inválida.");
+    sessionStorage.clear();
     window.location.href = "index.html";
 }
 
-/* ============================
-   👤 MINI PROFILE
-============================ */
-document.getElementById("miniProfile").innerText =
-    `👤 ${loggedUser.name}`;
+/* ========================= */
 
-/* ============================
-   👥 CONTADOR DE USUÁRIOS
-============================ */
-function updateUsersCounter() {
-    document.getElementById("usersCounter").innerText =
-        `Logado como: ${loggedUser.name}`;
+let lastMessageId = null;
+let pendingImageUrl = null;
+let isSending = false;
+
+const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
+
+/* UTILIDADES */
+function getColorFromName(name) {
+    if (!name) return "#ffffff";
+    let hash = 0;
+    for (let i = 0; i < name.length; i++)
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return userColors[Math.abs(hash) % userColors.length];
 }
 
-updateUsersCounter();
+function escapeHTML(str) {
+    if (!str) return "";
+    return str.replace(/[&<>"']/g, m => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[m]));
+}
 
-/* ============================
-   💬 CARREGAR MENSAGENS
-============================ */
-const chat = document.getElementById("chat");
-const channel_id = new URLSearchParams(window.location.search).get("channel");
+function highlightMentions(text) {
+    if (!text) return "";
+    const escaped = escapeHTML(text);
+    return escaped.replace(/@(\w+)/g, (match, username) => {
+        if (username === loggedUser)
+            return `<span class="mention-self">@${username}</span>`;
+        return `<span class="mention">@${username}</span>`;
+    });
+}
 
-async function loadMessages() {
-    if (!channel_id) return;
+function canUserSeeMessage(msg) {
+    if (!msg.to) return true;
+    return msg.to === loggedUser || msg.name === loggedUser;
+}
+
+/* EMOJIS */
+function toggleEmojis() {
+    const panel = document.getElementById("emojiPanel");
+    if (!panel) return;
+    panel.style.display = panel.style.display === "flex" ? "none" : "flex";
+}
+
+const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
+
+function loadEmojis() {
+    const panel = document.getElementById("emojiPanel");
+    if (!panel) return;
+
+    panel.innerHTML = "";
+    emojis.forEach(e => {
+        const span = document.createElement("span");
+        span.textContent = e;
+        span.onclick = () => {
+            const textarea = document.getElementById("content");
+            textarea.value += e;
+            textarea.focus();
+        };
+        panel.appendChild(span);
+    });
+}
+loadEmojis();
+
+/* MENSAGENS */
+async function loadMessages(options = {}) {
+    const { forceScrollBottom = false } = options;
 
     try {
-        const res = await fetch(`/api/get-private-messages?channel_id=${channel_id}`);
-        const data = await res.json();
+        const res = await fetch('/api/messages');
+        let data = await res.json();
+        if (!Array.isArray(data)) data = [];
 
-        chat.innerHTML = "";
+        const visibleMessages = data.filter(m => canUserSeeMessage(m));
 
-        data.forEach(msg => {
+        if (visibleMessages.length === 0) {
+            lastMessageId = null;
+        }
+
+        if (visibleMessages.length) {
+            const lastVisible = visibleMessages[visibleMessages.length - 1];
+
+            if (lastMessageId && lastVisible.id !== lastMessageId) {
+                const mentioned = lastVisible.content?.includes("@" + loggedUser);
+                if (lastVisible.name !== loggedUser || mentioned) {
+                    const sound = document.getElementById("messageSound");
+                    if (sound) sound.play().catch(()=>{});
+                }
+            }
+            lastMessageId = lastVisible.id;
+        }
+
+        const box = document.getElementById("messages");
+        if (!box) return;
+
+        const prevTop = box.scrollTop;
+        const prevHeight = box.scrollHeight;
+        const distance = prevHeight - prevTop - box.clientHeight;
+        const autoScroll = forceScrollBottom || distance < 80;
+
+        box.innerHTML = "";
+
+        visibleMessages.forEach(msg => {
             const div = document.createElement("div");
-            div.classList.add("message");
+            const isWhisper = msg.to !== null && msg.to !== undefined;
+            div.className = "message" + (isWhisper ? " whisper" : "");
+
+            const date = new Date(msg.created_at).toLocaleString("pt-BR");
+            const color = getColorFromName(msg.name);
+
+            const contentHTML = msg.image_url
+                ? `<a href="${msg.image_url}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
+                : highlightMentions(msg.content);
 
             div.innerHTML = `
-                <div class="sender">${msg.sender}</div>
-                <div>${msg.message}</div>
+                <div class="message-header">
+                    <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
+                    <span class="timestamp">${date}</span>
+                </div>
+                <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
             `;
 
-            chat.appendChild(div);
+            box.appendChild(div);
         });
 
-        chat.scrollTop = chat.scrollHeight;
+        if (autoScroll) {
+            box.scrollTop = box.scrollHeight;
+        } else {
+            box.scrollTop = prevTop + (box.scrollHeight - prevHeight);
+        }
 
-    } catch (err) {
-        console.error("Erro ao carregar mensagens", err);
+    } catch (e) {
+        console.error("Erro ao carregar mensagens:", e);
     }
 }
 
-loadMessages();
-setInterval(loadMessages, 3000);
-
-/* ============================
-   📤 ENVIAR MENSAGEM
-============================ */
-document.getElementById("sendBtn").addEventListener("click", sendMessage);
-
+/* ENVIO */
 async function sendMessage() {
-    const input = document.getElementById("messageInput");
-    const text = input.value.trim();
-    if (!text) return;
+    if (isSending || !loggedUser) return;
+
+    const contentInput = document.getElementById("content");
+    const sendButton = document.querySelector(".send-btn");
+    const text = contentInput.value.trim();
+
+    if (!text && !pendingImageUrl) return;
+
+    isSending = true;
+    if (sendButton) sendButton.disabled = true;
 
     try {
-        await fetch("/api/send-private-message", {
+        await fetch("/api/messages", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                channel_id,
-                sender: loggedUser.name,
-                message: text
+                name: loggedUser,
+                content: text || "🖼 Imagem",
+                image_url: pendingImageUrl,
+                to: null
             })
         });
 
-        input.value = "";
-        loadMessages();
+        contentInput.value = "";
+        pendingImageUrl = null;
+        await loadMessages({ forceScrollBottom: true });
 
-    } catch (err) {
-        console.error("Erro ao enviar mensagem", err);
+    } catch (e) {
+        console.error("Erro ao enviar mensagem:", e);
+    } finally {
+        isSending = false;
+        if (sendButton) sendButton.disabled = false;
     }
 }
+
+/* ONLINE */
+async function updateOnlineStatus() {
+    if (!loggedUser) return;
+    await fetch("/api/online", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: loggedUser })
+    });
+}
+
+async function loadOnlineUsers() {
+    try {
+        const res = await fetch("/api/online");
+        const data = await res.json();
+
+        document.getElementById("onlineUsers").textContent =
+            Array.isArray(data) && data.length
+                ? data.map(u => typeof u === "string" ? u : u.name).join(", ")
+                : "0";
+    } catch {}
+}
+
+/* INIT */
+document.addEventListener("DOMContentLoaded", () => {
+    const phone = document.getElementById("user-phone");
+    if (phone && loggedUser) phone.textContent = loggedUser;
+
+    const logout = document.getElementById("logout");
+    if (logout) {
+        logout.onclick = () => {
+            sessionStorage.clear();
+            window.location.href = "index.html";
+        };
+    }
+
+    const content = document.getElementById("content");
+    if (content) {
+        content.addEventListener("keydown", e => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+
+    loadMessages();
+    setInterval(loadMessages, 3000);
+
+    updateOnlineStatus();
+    setInterval(updateOnlineStatus, 5000);
+
+    loadOnlineUsers();
+    setInterval(loadOnlineUsers, 5000);
+});
 </script>
 
 </body>
 </html>
-
-
