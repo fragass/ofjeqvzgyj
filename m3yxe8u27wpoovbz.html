@@ -337,91 +337,57 @@ button.send-btn:hover { background: #151a21; transform: translateY(-1px); }
 </div>
 
 <script>
-/* =========================
-   LOGGED USER SEGURO
-========================= */
-let loggedUser = null;
-
-try {
-    const raw = sessionStorage.getItem("loggedUser");
-    if (raw) {
-        const parsed = JSON.parse(raw);
-        loggedUser = typeof parsed === "object" && parsed.name
-            ? parsed.name
-            : parsed;
-    }
-} catch {
-    loggedUser = sessionStorage.getItem("loggedUser");
-}
-
-if (!loggedUser) {
-    sessionStorage.clear();
-    window.location.href = "index.html";
-}
-
-/* =========================
-   ESTADO
-========================= */
+const loggedUser = sessionStorage.getItem("loggedUser");
+let lastMessageId = null;
+let pendingImageUrl = null;
 let isSending = false;
-let currentPrivateChannel = null;
+let currentPrivateChannel = null; // canal privado atual
 
 const userColors = ["#58a6ff","#2ea043","#f0883e","#a371f7","#ff7b72","#1f6feb","#3fb950","#d29922","#bc8cff","#ffa657"];
 
-
-
-/* =========================
-   UTILIDADES
-========================= */
+/* UTILIDADES */
 function getColorFromName(name) {
     let hash = 0;
-    for (let i = 0; i < name.length; i++)
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return userColors[Math.abs(hash) % userColors.length];
 }
 
 function escapeHTML(str) {
-    if (!str) return "";
-    return str.replace(/[&<>"']/g, m => ({
+    return str.replace(/[&<>"']/g, match => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-    }[m]));
+    }[match]));
 }
 
-
 function highlightMentions(text) {
-    if (!text) return "";
     const escaped = escapeHTML(text);
     return escaped.replace(/@(\w+)/g, (match, username) => {
-        if (username === loggedUser)
-            return `<span class="mention-self">@${username}</span>`;
+        if (username === loggedUser) return `<span class="mention-self">@${username}</span>`;
         return `<span class="mention">@${username}</span>`;
     });
 }
 
+/* VISIBILIDADE DE MENSAGEM */
 function canUserSeeMessage(msg) {
-    if (!msg.to) return true;
-    return msg.to === loggedUser || msg.name === loggedUser;
+    if (!msg.to) return true; // mensagem normal
+    return msg.to === loggedUser || msg.name === loggedUser; // sussurro
 }
 
 /* EMOJIS */
 function toggleEmojis() {
     const panel = document.getElementById("emojiPanel");
-    if (!panel) return;
     panel.style.display = panel.style.display === "flex" ? "none" : "flex";
 }
 
 const emojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😍","🥰","😘","😎","🤔","😢","😭","😡","🔥","👍","👎","👏","🙌","💪","🎉","❤️","💔","💯","✔️","⚡"];
-
 function loadEmojis() {
     const panel = document.getElementById("emojiPanel");
-    if (!panel) return;
-
     panel.innerHTML = "";
-    emojis.forEach(e => {
+    emojis.forEach(emoji => {
         const span = document.createElement("span");
-        span.textContent = e;
+        span.textContent = emoji;
         span.onclick = () => {
             const textarea = document.getElementById("content");
-            textarea.value += e;
+            textarea.value += emoji;
             textarea.focus();
         };
         panel.appendChild(span);
@@ -429,234 +395,300 @@ function loadEmojis() {
 }
 loadEmojis();
 
-/* =========================
-   LOAD MESSAGES
-========================= */
-async function loadMessages() {
-    try {
+/* PASTE DE IMAGEM */
+document.addEventListener("DOMContentLoaded", () => {
+    const contentInput = document.getElementById("content");
+    if (!contentInput) return;
 
-        let res;
+    contentInput.addEventListener("paste", async (event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return;
 
+        for (let item of items) {
+            if (item.type && item.type.includes("image")) {
+                const file = item.getAsFile();
+                if (file) {
+                    event.preventDefault();
+                    await uploadImage(file);
+                }
+            }
+        }
+    });
+});
+
+/* UPLOAD DE IMAGEM */
+async function uploadImage(file) {
+    const fileName = `${Date.now()}-${file.name}`;
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("fileName", fileName);
+
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (data.url) {
+        pendingImageUrl = data.url;
+        const textarea = document.getElementById("content");
+        textarea.value += "\n🖼 [Imagem pronta para envio]";
+        textarea.focus();
+    }
+}
+
+/* PARSE SUSSURRO */
+function parseWhisper(text) {
+    if (text.startsWith("/s ")) {
+        const match = text.match(/^\/s\s+@(\w+)\s+(.+)$/);
+        if (match) return { to: match[1], content: match[2] };
+    }
+    return { to: null, content: text };
+}
+
+/* COMANDOS DE CHAT PRIVADO */
+async function handlePrivateCommands(text) {
+    const trimmed = text.trim();
+
+    // Criar canal privado
+    if (trimmed.startsWith("/c ")) {
+        const match = trimmed.match(/^\/c\s+@(\w+)$/);
+        if (match) {
+            const otherUser = match[1];
+            try {
+                const res = await fetch('/api/dm/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user1: loggedUser, user2: otherUser })
+                });
+                const data = await res.json();
+                if (data.channel) {
+                    showOverlay(`Canal privado criado com @${otherUser}. Use /entrar @${otherUser} para entrar.`, "success");
+                } else {
+                    showOverlay(`Erro ao criar canal com @${otherUser}`, "error");
+                }
+            } catch (e) {
+                console.error(e);
+                showOverlay(`Erro ao criar canal com @${otherUser}`, "error");
+            }
+            return true;
+        }
+    }
+
+    // Entrar no canal privado
+    if (trimmed.startsWith("/entrar ")) {
+        const match = trimmed.match(/^\/entrar\s+@(\w+)$/);
+        if (match) {
+            const otherUser = match[1];
+            try {
+                const res = await fetch('/api/dm/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user1: loggedUser, user2: otherUser })
+                });
+                const data = await res.json();
+                if (data.channel) {
+                    currentPrivateChannel = data.channel;
+                    showOverlay(`Entrou no canal privado com @${otherUser}`, "success");
+                    await loadMessages({ forceScrollBottom: true });
+                } else {
+                    showOverlay(`Canal privado com @${otherUser} não encontrado`, "error");
+                }
+            } catch (e) {
+                console.error(e);
+                showOverlay(`Erro ao entrar no canal com @${otherUser}`, "error");
+            }
+            return true;
+        }
+    }
+
+    // Sair do canal privado
+    if (trimmed === "/sair") {
         if (currentPrivateChannel) {
-            res = await fetch(`/api/dm/messages?channel_id=${currentPrivateChannel}`);
+            currentPrivateChannel = null;
+            showOverlay("Saiu do canal privado", "info");
+            await loadMessages({ forceScrollBottom: true });
         } else {
-            res = await fetch(`/api/messages`);
+            showOverlay("Não está em nenhum canal privado", "info");
+        }
+        return true;
+    }
+
+    return false; // não era comando privado
+}
+
+/* MENSAGENS */
+async function loadMessages(options = {}) {
+    const { forceScrollBottom = false } = options;
+
+    try {
+        const res = await fetch(currentPrivateChannel 
+            ? `/api/dm/messages?channel_id=${currentPrivateChannel.id}` 
+            : '/api/messages');
+        const data = await res.json();
+
+        const visibleMessages = data.filter(msg => canUserSeeMessage(msg));
+
+        if (visibleMessages.length) {
+            const lastVisible = visibleMessages[visibleMessages.length - 1];
+
+            if (lastMessageId && lastVisible.id !== lastMessageId) {
+                const mentioned = lastVisible.content?.includes("@" + loggedUser);
+                if (lastVisible.name !== loggedUser || mentioned) {
+                    document.getElementById("messageSound").play();
+                }
+            }
+            lastMessageId = lastVisible.id;
         }
 
-        let data = await res.json();
-        if (!Array.isArray(data)) data = [];
+        const box = document.getElementById('messages');
+        const previousScrollTop = box.scrollTop;
+        const previousScrollHeight = box.scrollHeight;
+        const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
+        const shouldAutoScroll = forceScrollBottom || distanceFromBottom < 80;
 
-        const box = document.getElementById("messages");
-        box.innerHTML = "";
+        box.innerHTML = '';
 
         data.forEach(msg => {
+            const isWhisper = msg.to !== null;
+            if (!canUserSeeMessage(msg)) return;
 
-            const sender = msg.name || msg.sender;
-            const content = msg.content || msg.message;
+            const div = document.createElement('div');
+            div.className = 'message' + (isWhisper ? ' whisper' : '');
 
-            const div = document.createElement("div");
-            div.className = "message";
+            const date = new Date(msg.created_at).toLocaleString('pt-BR');
+            const color = getColorFromName(msg.name);
 
-            const date = new Date(msg.created_at).toLocaleString("pt-BR");
-            const color = getColorFromName(sender);
+            const contentHTML = msg.image_url
+                ? `<a href="${msg.image_url}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>`
+                : highlightMentions(msg.content);
 
             div.innerHTML = `
                 <div class="message-header">
-                    <span style="color:${color}">${escapeHTML(sender)}</span>
+                    <span class="username" style="color:${color}">${escapeHTML(msg.name)}</span>
                     <span class="timestamp">${date}</span>
                 </div>
-                <div>${escapeHTML(content)}</div>
+                <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
             `;
 
             box.appendChild(div);
         });
 
-        box.scrollTop = box.scrollHeight;
-
-    } catch (err) {
-        console.error("Erro ao carregar mensagens:", err);
+        if (shouldAutoScroll) {
+            box.scrollTop = box.scrollHeight;
+        } else {
+            const heightDiff = box.scrollHeight - previousScrollHeight;
+            box.scrollTop = previousScrollTop + heightDiff;
+        }
+    } catch (e) {
+        console.error("Erro ao carregar mensagens:", e);
     }
 }
 
-
-/* =========================
-   ENVIO + COMANDOS
-========================= */
+/* ENVIO */
 async function sendMessage() {
-
     if (isSending) return;
 
-    const input = document.getElementById("content");
-    const text = input.value.trim();
-    if (!text) return;
+    const contentInput = document.getElementById('content');
+    const sendButton = document.querySelector(".send-btn");
+    const text = contentInput.value.trim();
 
-    isSending = true;
+    if (!text && !pendingImageUrl) return;
 
-    try {
-
-        /* ===== SUSSURRO ===== */
-        if (text.startsWith("/s ")) {
-
-            const match = text.match(/^\/s\s@(\w+)\s(.+)/);
-            if (!match) {
-                isSending = false;
-                return;
-            }
-
-            const toUser = match[1];
-            const message = match[2];
-
-            await fetch("/api/messages", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: loggedUser,
-                    content: message,
-                    to: toUser
-                })
-            });
-
-        }
-
-        /* ===== CRIAR DM ===== */
-        else if (text.startsWith("/c ")) {
-
-            const match = text.match(/^\/c\s@(\w+)/);
-            if (!match) {
-                isSending = false;
-                return;
-            }
-
-            const user2 = match[1];
-
-            const res = await fetch("/api/dm/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    user1: loggedUser,
-                    user2
-                })
-            });
-
-            const data = await res.json();
-            currentPrivateChannel = data.channel_id;
-
-            alert("Chat privado criado com @" + user2);
-        }
-
-        /* ===== ENTRAR DM ===== */
-        else if (text.startsWith("/entrar ")) {
-
-            const match = text.match(/^\/entrar\s@(\w+)/);
-            if (!match) {
-                isSending = false;
-                return;
-            }
-
-            const user1 = match[1];
-
-            const res = await fetch("/api/dm/join", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    user1,
-                    user2: loggedUser
-                })
-            });
-
-            const data = await res.json();
-            currentPrivateChannel = data.channel_id;
-
-            alert("Você entrou no chat privado com @" + user1);
-        }
-
-        /* ===== SAIR DM ===== */
-        else if (text === "/sair") {
-
-            await fetch("/api/dm/leave", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    channel_id: currentPrivateChannel,
-                    user: loggedUser
-                })
-            });
-
-            currentPrivateChannel = null;
-            alert("Você saiu do chat privado.");
-        }
-
-        /* ===== MENSAGEM NORMAL ===== */
-        else {
-
-            if (currentPrivateChannel) {
-
-                await fetch("/api/dm/send", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        channel_id: currentPrivateChannel,
-                        sender: loggedUser,
-                        message: text
-                    })
-                });
-
-            } else {
-
-                await fetch("/api/messages", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        name: loggedUser,
-                        content: text,
-                        to: null
-                    })
-                });
-
-            }
-        }
-
-        input.value = "";
-        loadMessages();
-
-    } catch (err) {
-        console.error("Erro ao enviar:", err);
+    // PROCESSAR COMANDOS PRIVADOS
+    const wasPrivateCommand = await handlePrivateCommands(text);
+    if (wasPrivateCommand) {
+        contentInput.value = "";
+        return;
     }
 
-    isSending = false;
+    const { to, content } = parseWhisper(text);
+
+    isSending = true;
+    sendButton.disabled = true;
+    sendButton.style.opacity = "0.6";
+    sendButton.style.cursor = "not-allowed";
+
+    try {
+        const channelId = currentPrivateChannel ? currentPrivateChannel.id : null;
+
+        await fetch(channelId ? '/api/dm/send' : '/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: loggedUser,
+                content: content || "🖼 Imagem",
+                image_url: pendingImageUrl,
+                to,
+                channel_id: channelId
+            })
+        });
+
+        contentInput.value = '';
+        pendingImageUrl = null;
+        await loadMessages({ forceScrollBottom: true });
+
+        if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
+    } catch (e) {
+        console.error("Erro ao enviar mensagem:", e);
+        if (to) showOverlay(`Falha ao enviar sussurro para @${to}`, "error");
+    } finally {
+        isSending = false;
+        sendButton.disabled = false;
+        sendButton.style.opacity = "1";
+        sendButton.style.cursor = "pointer";
+    }
 }
 
-    
-/* =========================
-   ONLINE
-========================= */
+/* OVERLAY */
+function showOverlay(msg, type = "info") {
+    const overlay = document.createElement("div");
+    overlay.className = `overlay ${type}`;
+    overlay.textContent = msg;
+    document.body.appendChild(overlay);
+
+    setTimeout(() => {
+        overlay.style.opacity = "0";
+        setTimeout(() => overlay.remove(), 400);
+    }, 2200);
+}
+
+/* ONLINE */
 async function updateOnlineStatus() {
     if (!loggedUser) return;
-    await fetch("/api/online", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+    await fetch('/api/online', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: loggedUser })
     });
 }
 
 async function loadOnlineUsers() {
     try {
-        const res = await fetch("/api/online");
+        const res = await fetch('/api/online');
         const data = await res.json();
-
         document.getElementById("onlineUsers").textContent =
-            Array.isArray(data) && data.length
-                ? data.map(u => typeof u === "string" ? u : u.name).join(", ")
-                : "0";
+            Array.isArray(data) && data.length ? data.map(u => u.name).join(", ") : "0";
     } catch {}
 }
 
-/* =========================
-   INIT
-========================= */
+/* INIT */
 document.addEventListener("DOMContentLoaded", () => {
+    const miniProfile = document.getElementById("mini-profile");
+    const dropdownMenu = document.getElementById("dropdown-menu");
+    const arrow = document.getElementById("arrow");
 
     document.getElementById("user-phone").textContent = loggedUser;
+
+    miniProfile.onclick = () => {
+        const open = dropdownMenu.style.display === "block";
+        dropdownMenu.style.display = open ? "none" : "block";
+        arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
+    };
+
+    document.addEventListener("click", (e) => {
+        if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
+            dropdownMenu.style.display = "none";
+            arrow.style.transform = "rotate(0deg)";
+        }
+    });
 
     document.getElementById("logout").onclick = () => {
         sessionStorage.clear();
@@ -672,10 +704,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     loadMessages();
     setInterval(loadMessages, 3000);
-
     updateOnlineStatus();
     setInterval(updateOnlineStatus, 5000);
-
     loadOnlineUsers();
     setInterval(loadOnlineUsers, 5000);
 });
@@ -683,6 +713,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 </body>
 </html>
+
 
 
 
