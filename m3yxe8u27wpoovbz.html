@@ -375,7 +375,7 @@
     const loggedUser = sessionStorage.getItem("loggedUser");
 
     // =====================================================
-    // 🔔 TITLE BADGE (NOTIFICAÇÃO NO TITLE)
+    // 🔔 TITLE BADGE (NOTIFICAÇÃO NO TITLE)  ✅ (MESCLADO)
     // =====================================================
     const ORIGINAL_TITLE = document.title || "Página inicial - Workday";
     let unreadTitleCount = 0;
@@ -407,30 +407,35 @@
     async function apiPathMessages() {
       if (_messagesPath) return _messagesPath;
 
+      // tenta /api/messages primeiro
       try {
         const r1 = await fetch("/api/messages?ping=1");
         if (r1.ok || r1.status === 405) { _messagesPath = "/api/messages"; return _messagesPath; }
       } catch {}
 
+      // fallback /api/message (seu arquivo original)
       _messagesPath = "/api/message";
       return _messagesPath;
     }
 
     // ====== Estado geral ======
-    let lastMessageId = null;
+    let lastMessageId = null; // (som)
     let pendingImageUrl = null;
     let isSending = false;
 
-    let chatMode = "public";
+    let chatMode = "public"; // "public" | "dm"
     let currentRoom = null;
     let currentOther = null;
 
+    // reply
     let replyState = null;
     let lastRenderedElements = [];
 
+    // typing
     let typingDebounceTimer = null;
     let lastTypingSentAt = 0;
 
+    // incremental state
     const incState = {
       public: { lastId: 0, rendered: new Set() },
       dm:     { lastId: 0, rendered: new Set() }
@@ -459,8 +464,8 @@
     }
 
     function canUserSeeMessage(msg) {
-      if (!msg.to) return true;
-      return msg.to === loggedUser || msg.name === loggedUser;
+      if (!msg.to) return true; // mensagem normal
+      return msg.to === loggedUser || msg.name === loggedUser; // sussurro
     }
 
     function showOverlay(msg, type = "info") {
@@ -468,6 +473,7 @@
       overlay.className = `overlay ${type}`;
       overlay.textContent = msg;
       document.body.appendChild(overlay);
+
       setTimeout(() => {
         overlay.style.opacity = "0";
         setTimeout(() => overlay.remove(), 400);
@@ -616,12 +622,8 @@
           textarea.focus();
           showOverlay("Imagem pronta para envio ✅", "success");
           onUserTyping();
-        } else {
-          showOverlay("Falha no upload da imagem ❌", "error");
         }
-      } catch {
-        showOverlay("Falha no upload da imagem ❌", "error");
-      }
+      } catch {}
     }
 
     // ====== Comandos ======
@@ -938,6 +940,7 @@
       }
     }
 
+    // ====== FETCH helpers ======
     function maxIdFrom(list) {
       let max = 0;
       for (const m of list) {
@@ -957,6 +960,7 @@
       }
     }
 
+    // ====== LOAD: public (full + incremental) ======
     async function loadPublicFull(options = {}) {
       const base = await apiPathMessages();
       const limit = 200;
@@ -1003,7 +1007,7 @@
 
       if (!newOnes.length) return true;
 
-      // ✅ TITLE BADGE: só conta em background e só mensagens de outros
+      // ✅ TITLE BADGE (SÓ EM BACKGROUND, SÓ OUTROS USUÁRIOS)
       if (document.hidden) {
         const inc = newOnes.filter(m => (m?.name || "") !== loggedUser).length;
         if (inc > 0) bumpTitleBadge(inc);
@@ -1021,6 +1025,7 @@
       return true;
     }
 
+    // ====== LOAD: dm (full + incremental) ======
     async function loadDmFull(options = {}) {
       if (!currentRoom) return true;
       const limit = 200;
@@ -1063,7 +1068,7 @@
 
       if (!newOnes.length) return true;
 
-      // ✅ TITLE BADGE: só conta em background e só mensagens de outros
+      // ✅ TITLE BADGE (SÓ EM BACKGROUND, SÓ OUTROS USUÁRIOS)
       if (document.hidden) {
         const inc = newOnes.filter(m => (m?.sender || "") !== loggedUser).length;
         if (inc > 0) bumpTitleBadge(inc);
@@ -1077,6 +1082,7 @@
       return true;
     }
 
+    // ====== MASTER load ======
     async function loadMessages(options = {}) {
       if (chatMode === "dm") {
         if (incState.dm.lastId > 0) return await loadDmIncremental();
@@ -1087,6 +1093,7 @@
       }
     }
 
+    // ====== Sanity sync ======
     async function sanitySync() {
       try {
         if (chatMode === "dm") await loadDmFull({ forceScrollBottom: false });
@@ -1097,6 +1104,7 @@
       }
     }
 
+    // ====== DM create/enter/leave ======
     async function createRoom(target, room) {
       if (target === loggedUser) {
         showOverlay("Você precisa marcar OUTRO usuário para criar uma sala. Ex: /c @fulano sala123", "error");
@@ -1204,6 +1212,7 @@
       showOverlay(`Saiu da sala "${left}" ✅`, "success");
     }
 
+    // ====== send ======
     async function sendPublicMessage(text) {
       const base = await apiPathMessages();
       const contentInput = document.getElementById("content");
@@ -1227,6 +1236,7 @@
       clearReplySelection();
 
       await loadPublicIncremental();
+
       if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
     }
 
@@ -1334,6 +1344,7 @@
       }
     }
 
+    // ====== online ======
     async function updateOnlineStatus() {
       if (!loggedUser) return true;
       try {
@@ -1360,6 +1371,7 @@
       }
     }
 
+    // ====== SAFE polling manager (backoff + background) ======
     const pollState = {
       messages: { fails: 0, timer: null },
       sanity:   { fails: 0, timer: null },
@@ -1434,6 +1446,7 @@
       }, 60000);
     }
 
+    // ====== INIT ======
     document.addEventListener("DOMContentLoaded", async () => {
       const miniProfile = document.getElementById("mini-profile");
       const dropdownMenu = document.getElementById("dropdown-menu");
