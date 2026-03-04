@@ -1,138 +1,173 @@
-// api/message.js  (recomendo renomear para api/messages.js)
+// api/dm/messages.js
 export default async function handler(req, res) {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return res.status(500).json({ error: "Supabase not configured" });
-  }
-
-  const endpoint = `${SUPABASE_URL}/rest/v1/messages`;
-
-  if (req.method === "GET") {
-    try {
-      const response = await fetch(`${endpoint}?select=*&order=created_at.asc`, {
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-      });
-
-      const data = await response.json();
-      return res.status(response.status).json(data);
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  }
-
-  if (req.method === "POST") {
-    const {
-      name,
-      content,
-      image_url,
-      to = null,
-
-      // reply:
-      reply_to = null,
-      reply_preview = null,
-    } = req.body || {};
-
-    if (!name || (!content && !image_url)) {
-      return res.status(400).json({ error: "Missing fields" });
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(500).json({ success: false, error: "Supabase not configured" });
     }
 
-    // helper: valida se o usuário pode responder aquela msg (whisper)
-    async function canReplyToMessage(original) {
-      if (!original) return false;
-      if (!original.to) return true; // msg pública
-      return original.to === name || original.name === name; // whisper: só remetente/destinatário
-    }
+    const channelsEndpoint = `${SUPABASE_URL}/rest/v1/private_channels`;
+    const dmEndpoint = `${SUPABASE_URL}/rest/v1/private_messages`;
 
-    // monta preview no backend (preferível)
-    async function buildReplyPreviewFromDb(id) {
-      if (!id) return null;
-
-      const resp = await fetch(`${endpoint}?select=id,name,content,image_url,to,created_at&id=eq.${encodeURIComponent(id)}&limit=1`, {
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-      });
-
-      const arr = await resp.json();
-      const original = Array.isArray(arr) && arr.length ? arr[0] : null;
-
-      if (!original) return null;
-      if (!(await canReplyToMessage(original))) return null;
-
-      const text = (original.content || "").trim();
-      const snippet =
-        text
-          ? (text.length > 80 ? text.slice(0, 80) + "…" : text)
-          : (original.image_url ? "🖼 Imagem" : "");
-
-      return {
-        id: original.id,
-        name: original.name,
-        snippet,
-        hasImage: !!original.image_url,
-        created_at: original.created_at,
-      };
-    }
-
-    let finalReplyPreview = null;
-    let finalReplyTo = reply_to ?? null;
-
-    try {
-      if (finalReplyTo) {
-        const built = await buildReplyPreviewFromDb(finalReplyTo);
-        if (built) {
-          finalReplyPreview = built;
-        } else {
-          // fallback: aceita o que o front mandou (se vier)
-          finalReplyPreview = reply_preview && typeof reply_preview === "object" ? reply_preview : null;
-          // se nem preview tem, remove reply_to pra não ficar “quebrado”
-          if (!finalReplyPreview) finalReplyTo = null;
+    // helper: pega canal e valida se o user participa
+    async function getChannelByRoom(room) {
+      const r = await fetch(
+        `${channelsEndpoint}?select=id,room,user1,user2&room=eq.${encodeURIComponent(room)}&limit=1`,
+        {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
         }
-      }
-    } catch {
-      // se falhar a busca, fallback no preview do front
-      finalReplyPreview = reply_preview && typeof reply_preview === "object" ? reply_preview : null;
-      if (!finalReplyPreview) finalReplyTo = null;
+      );
+      const j = await r.json();
+      return Array.isArray(j) && j.length ? j[0] : null;
     }
 
-    const body = {
-      name,
-      content: content || "🖼 Imagem",
-      to,
-      reply_to: finalReplyTo,
-      reply_preview: finalReplyPreview,
-    };
+    if (req.method === "GET") {
+      const room = String(req.query.room || "");
+      const name = String(req.query.name || "");
 
-    if (image_url) body.image_url = image_url;
+      if (!room || !name) return res.status(400).json({ success: false, error: "Missing room/name" });
 
-    try {
-      const response = await fetch(endpoint, {
+      const channel = await getChannelByRoom(room);
+      if (!channel) return res.status(404).json([]);
+
+      const allowed = channel.user1 === name || channel.user2 === name;
+      if (!allowed) return res.status(403).json([]);
+
+      const r = await fetch(
+        `${dmEndpoint}?select=*&channel_id=eq.${encodeURIComponent(channel.id)}&order=created_at.asc`,
+        {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+        }
+      );
+
+      const data = await r.json();
+      return res.status(200).json(Array.isArray(data) ? data : []);
+    }
+
+    if (req.method === "POST") {
+      const body = req.body || {};
+      const room = body.room;
+      const sender = body.sender;
+      const message = body.message || "";
+      const image_url = body.image_url || null;
+
+      const reply_to = body.reply_to ?? null;
+      const reply_preview = body.reply_preview ?? null;
+
+      if (!room || !sender || (!message.trim() && !image_url)) {
+        return res.status(400).json({ success: false, error: "Missing fields" });
+      }
+
+      const channel = await getChannelByRoom(room);
+      if (!channel) return res.status(404).json({ success: false, error: "Room not found" });
+
+      const allowed = channel.user1 === sender || channel.user2 === sender;
+      if (!allowed) return res.status(403).json({ success: false, error: "Not allowed" });
+
+      // monta preview no backend quando reply_to existir
+      async function buildReplyPreviewFromDb(id) {
+        if (!id) return null;
+
+        const r = await fetch(
+          `${dmEndpoint}?select=id,sender,message,image_url,created_at,channel_id&id=eq.${encodeURIComponent(id)}&limit=1`,
+          {
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            },
+          }
+        );
+        const arr = await r.json();
+        const original = Array.isArray(arr) && arr.length ? arr[0] : null;
+        if (!original) return null;
+
+        // só pode responder mensagens do MESMO channel_id
+        if (String(original.channel_id) !== String(channel.id)) return null;
+
+        const text = (original.message || "").trim();
+        const snippet =
+          text
+            ? (text.length > 80 ? text.slice(0, 80) + "…" : text)
+            : (original.image_url ? "🖼 Imagem" : "");
+
+        return {
+          id: original.id,
+          name: original.sender,
+          snippet,
+          hasImage: !!original.image_url,
+          created_at: original.created_at,
+        };
+      }
+
+      let finalReplyTo = reply_to;
+      let finalReplyPreview = null;
+
+      try {
+        if (finalReplyTo) {
+          const built = await buildReplyPreviewFromDb(finalReplyTo);
+          if (built) finalReplyPreview = built;
+          else {
+            finalReplyPreview = reply_preview && typeof reply_preview === "object" ? reply_preview : null;
+            if (!finalReplyPreview) finalReplyTo = null;
+          }
+        }
+      } catch {
+        finalReplyPreview = reply_preview && typeof reply_preview === "object" ? reply_preview : null;
+        if (!finalReplyPreview) finalReplyTo = null;
+      }
+
+      const insertBody = {
+        channel_id: channel.id,
+        sender,
+        message: message.trim() ? message : "🖼 Imagem",
+        image_url,
+        reply_to: finalReplyTo,
+        reply_preview: finalReplyPreview,
+      };
+
+      const r = await fetch(dmEndpoint, {
         method: "POST",
         headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
           "Content-Type": "application/json",
           Prefer: "return=minimal",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(insertBody),
       });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        return res.status(500).json({ error: errText });
+      if (!r.ok) {
+        const t = await r.text();
+        return res.status(500).json({ success: false, error: t });
       }
 
-      return res.status(200).json({ success: true });
-    } catch (err) {
-      return res.status(500).json({ error: err.message });
-    }
-  }
+      // atualiza last_activity
+      try {
+        await fetch(`${channelsEndpoint}?room=eq.${encodeURIComponent(room)}`, {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({ last_activity: new Date().toISOString() }),
+        });
+      } catch {}
 
-  return res.status(405).json({ error: "Method not allowed" });
+      return res.status(200).json({ success: true });
+    }
+
+    return res.status(405).json({ success: false, error: "Method not allowed" });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: "Internal error", details: String(e?.message || e) });
+  }
 }
