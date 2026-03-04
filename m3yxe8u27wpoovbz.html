@@ -375,31 +375,31 @@
     const loggedUser = sessionStorage.getItem("loggedUser");
 
     // =====================================================
-    // 🔔 TITLE BADGE (notificação no title)
+    // 🔔 TITLE BADGE (NOTIFICAÇÃO NO TITLE)
     // =====================================================
     const ORIGINAL_TITLE = document.title || "Página inicial - Workday";
     let unreadTitleCount = 0;
 
-    function _updateTitleBadge() {
+    function updateTitleBadge() {
       document.title = unreadTitleCount > 0
         ? `(${unreadTitleCount}) ${ORIGINAL_TITLE}`
         : ORIGINAL_TITLE;
     }
 
-    function _bumpTitleBadge(n = 1) {
+    function bumpTitleBadge(n = 1) {
       unreadTitleCount += n;
       if (unreadTitleCount < 0) unreadTitleCount = 0;
-      _updateTitleBadge();
+      updateTitleBadge();
     }
 
-    function _clearTitleBadge() {
+    function clearTitleBadge() {
       unreadTitleCount = 0;
-      _updateTitleBadge();
+      updateTitleBadge();
     }
 
-    window.addEventListener("focus", _clearTitleBadge);
+    window.addEventListener("focus", clearTitleBadge);
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) _clearTitleBadge();
+      if (!document.hidden) clearTitleBadge();
     });
 
     // ====== API PATH (compatibilidade /api/messages vs /api/message) ======
@@ -407,35 +407,30 @@
     async function apiPathMessages() {
       if (_messagesPath) return _messagesPath;
 
-      // tenta /api/messages primeiro
       try {
         const r1 = await fetch("/api/messages?ping=1");
         if (r1.ok || r1.status === 405) { _messagesPath = "/api/messages"; return _messagesPath; }
       } catch {}
 
-      // fallback /api/message (seu arquivo original)
       _messagesPath = "/api/message";
       return _messagesPath;
     }
 
     // ====== Estado geral ======
-    let lastMessageId = null; // (som)
+    let lastMessageId = null;
     let pendingImageUrl = null;
     let isSending = false;
 
-    let chatMode = "public"; // "public" | "dm"
+    let chatMode = "public";
     let currentRoom = null;
     let currentOther = null;
 
-    // reply
     let replyState = null;
     let lastRenderedElements = [];
 
-    // typing
     let typingDebounceTimer = null;
     let lastTypingSentAt = 0;
 
-    // incremental state
     const incState = {
       public: { lastId: 0, rendered: new Set() },
       dm:     { lastId: 0, rendered: new Set() }
@@ -943,7 +938,6 @@
       }
     }
 
-    // ====== FETCH helpers ======
     function maxIdFrom(list) {
       let max = 0;
       for (const m of list) {
@@ -963,7 +957,6 @@
       }
     }
 
-    // ====== LOAD: public (full + incremental) ======
     async function loadPublicFull(options = {}) {
       const base = await apiPathMessages();
       const limit = 200;
@@ -1010,10 +1003,10 @@
 
       if (!newOnes.length) return true;
 
-      // 🔔 TITLE BADGE: só conta em background e só mensagens de outros
+      // ✅ TITLE BADGE: só conta em background e só mensagens de outros
       if (document.hidden) {
         const inc = newOnes.filter(m => (m?.name || "") !== loggedUser).length;
-        if (inc > 0) _bumpTitleBadge(inc);
+        if (inc > 0) bumpTitleBadge(inc);
       }
 
       appendPublic(newOnes);
@@ -1028,7 +1021,6 @@
       return true;
     }
 
-    // ====== LOAD: dm (full + incremental) ======
     async function loadDmFull(options = {}) {
       if (!currentRoom) return true;
       const limit = 200;
@@ -1051,8 +1043,453 @@
     async function loadDmIncremental() {
       if (!currentRoom) return true;
       const afterId = incState.dm.lastId || 0;
-      const url = `/api/dm/messages?room=${encodeURIComponent(currentRoom)}&name=${encodeURIComponent(loggedUser)}&after_id=${after_id=${afterId}}&limit=200`;
+      const url = `/api/dm/messages?room=${encodeURIComponent(currentRoom)}&name=${encodeURIComponent(loggedUser)}&after_id=${afterId}&limit=200`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("fail");
+      const data = await res.json();
+
+      const list = Array.isArray(data) ? data : [];
+      if (!list.length) return true;
+
+      const newOnes = [];
+      for (const m of list) {
+        const id = Number(m.id);
+        if (!incState.dm.rendered.has(id)) {
+          incState.dm.rendered.add(id);
+          newOnes.push(m);
+        }
+      }
+
+      if (!newOnes.length) return true;
+
+      // ✅ TITLE BADGE: só conta em background e só mensagens de outros
+      if (document.hidden) {
+        const inc = newOnes.filter(m => (m?.sender || "") !== loggedUser).length;
+        if (inc > 0) bumpTitleBadge(inc);
+      }
+
+      appendDm(newOnes);
+
+      const maxNew = maxIdFrom(newOnes);
+      if (maxNew > incState.dm.lastId) incState.dm.lastId = maxNew;
+
+      return true;
     }
+
+    async function loadMessages(options = {}) {
+      if (chatMode === "dm") {
+        if (incState.dm.lastId > 0) return await loadDmIncremental();
+        return await loadDmFull(options);
+      } else {
+        if (incState.public.lastId > 0) return await loadPublicIncremental();
+        return await loadPublicFull(options);
+      }
+    }
+
+    async function sanitySync() {
+      try {
+        if (chatMode === "dm") await loadDmFull({ forceScrollBottom: false });
+        else await loadPublicFull({ forceScrollBottom: false });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function createRoom(target, room) {
+      if (target === loggedUser) {
+        showOverlay("Você precisa marcar OUTRO usuário para criar uma sala. Ex: /c @fulano sala123", "error");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/dm/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            creator: loggedUser,
+            target,
+            room,
+            name: loggedUser,
+            user1: loggedUser,
+            user2: target,
+            to: target
+          })
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok || !data) {
+          showOverlay("Erro ao criar/abrir sala ❌", "error");
+          return;
+        }
+        if (!data.success) {
+          showOverlay(data.error || "Erro ao criar/abrir sala ❌", "error");
+          return;
+        }
+
+        if (data.message) showOverlay(data.message, data.reused ? "info" : "success");
+
+        const roomToEnter = data.room || room;
+        await enterRoom(roomToEnter);
+
+      } catch {
+        showOverlay("Erro ao criar/abrir sala ❌", "error");
+      }
+    }
+
+    async function enterRoom(room) {
+      try {
+        const res = await fetch("/api/dm/enter", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: loggedUser, room })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          showOverlay(`Erro ao entrar em "${room}" ❌`, "error");
+          return;
+        }
+
+        chatMode = "dm";
+        currentRoom = data.channel.room;
+        currentOther = data.channel.other;
+
+        incState.dm.lastId = 0;
+        incState.dm.rendered.clear();
+
+        setHeader();
+        clearTypingUI();
+        clearReplySelection();
+        await sendTyping(false);
+
+        await loadDmFull({ forceScrollBottom: true });
+        showOverlay(`Entrou na sala "${currentRoom}" ✅`, "success");
+      } catch {
+        showOverlay("Erro ao entrar na sala ❌", "error");
+      }
+    }
+
+    async function leaveRoom() {
+      if (!currentRoom) {
+        showOverlay("Você não está em uma sala privada.", "info");
+        return;
+      }
+
+      await sendTyping(false);
+
+      try {
+        await fetch("/api/dm/leave", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: loggedUser, room: currentRoom })
+        });
+      } catch {}
+
+      const left = currentRoom;
+      chatMode = "public";
+      currentRoom = null;
+      currentOther = null;
+
+      incState.public.lastId = 0;
+      incState.public.rendered.clear();
+
+      setHeader();
+      clearTypingUI();
+      clearReplySelection();
+      await loadPublicFull({ forceScrollBottom: true });
+      showOverlay(`Saiu da sala "${left}" ✅`, "success");
+    }
+
+    async function sendPublicMessage(text) {
+      const base = await apiPathMessages();
+      const contentInput = document.getElementById("content");
+      const { to, content } = parseWhisper(text);
+
+      await fetch(base, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: loggedUser,
+          content: content || "🖼 Imagem",
+          image_url: pendingImageUrl,
+          to,
+          reply_to: replyState?.id ?? null,
+          reply_preview: replyState?.preview ?? null
+        })
+      });
+
+      contentInput.value = "";
+      pendingImageUrl = null;
+      clearReplySelection();
+
+      await loadPublicIncremental();
+      if (to) showOverlay(`Sussurro enviado para @${to}`, "success");
+    }
+
+    async function sendDmMessage(text) {
+      const contentInput = document.getElementById("content");
+
+      await fetch("/api/dm/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          room: currentRoom,
+          sender: loggedUser,
+          message: text || (pendingImageUrl ? "🖼 Imagem" : ""),
+          image_url: pendingImageUrl,
+          reply_to: replyState?.id ?? null,
+          reply_preview: replyState?.preview ?? null
+        })
+      });
+
+      contentInput.value = "";
+      pendingImageUrl = null;
+      clearReplySelection();
+
+      await loadDmIncremental();
+    }
+
+    async function sendMessage() {
+      if (isSending) return;
+
+      const contentInput = document.getElementById("content");
+      const sendButton = document.querySelector(".send-btn");
+      const text = contentInput.value.trim();
+
+      const create = parseCreateRoom(text);
+      const enter = parseEnterRoom(text);
+
+      if (create) {
+        contentInput.value = "";
+
+        if (!create.room) {
+          showOverlay('Nome da sala inválido. Use letras/números e pelo menos 3 caracteres.', "error");
+          onUserTyping();
+          return;
+        }
+
+        if (create.roomRaw && create.roomRaw.trim() !== create.room) {
+          showOverlay(`Nome da sala ajustado para: "${create.room}"`, "info");
+        }
+
+        showOverlay(`Abrindo sala com @${create.target}...`, "info");
+        await createRoom(create.target, create.room);
+        onUserTyping();
+        return;
+      }
+
+      if (enter) {
+        contentInput.value = "";
+
+        if (!enter.room) {
+          showOverlay('Nome da sala inválido. Use letras/números e pelo menos 3 caracteres.', "error");
+          onUserTyping();
+          return;
+        }
+
+        if (enter.roomRaw && enter.roomRaw.trim() !== enter.room) {
+          showOverlay(`Entrando em: "${enter.room}"`, "info");
+        } else {
+          showOverlay(`Entrando em "${enter.room}"...`, "info");
+        }
+
+        await enterRoom(enter.room);
+        onUserTyping();
+        return;
+      }
+
+      if (isLeaveCommand(text)) {
+        contentInput.value = "";
+        await leaveRoom();
+        onUserTyping();
+        return;
+      }
+
+      if (!text && !pendingImageUrl) return;
+
+      isSending = true;
+      sendButton.disabled = true;
+      sendButton.style.opacity = "0.6";
+      sendButton.style.cursor = "not-allowed";
+
+      try {
+        await sendTyping(false);
+
+        if (chatMode === "dm") await sendDmMessage(text);
+        else await sendPublicMessage(text);
+
+      } catch (e) {
+        console.error("Erro ao enviar:", e);
+        showOverlay("Falha ao enviar mensagem ❌", "error");
+      } finally {
+        isSending = false;
+        sendButton.disabled = false;
+        sendButton.style.opacity = "1";
+        sendButton.style.cursor = "pointer";
+        onUserTyping();
+      }
+    }
+
+    async function updateOnlineStatus() {
+      if (!loggedUser) return true;
+      try {
+        await fetch('/api/online', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: loggedUser })
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function loadOnlineUsers() {
+      try {
+        const res = await fetch('/api/online');
+        const data = await res.json();
+        document.getElementById("onlineUsers").textContent =
+          Array.isArray(data) && data.length ? data.map(u => u.name).join(", ") : "0";
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    const pollState = {
+      messages: { fails: 0, timer: null },
+      sanity:   { fails: 0, timer: null },
+      online:   { fails: 0, timer: null },
+      typing:   { fails: 0, timer: null },
+      hb:       { fails: 0, timer: null }
+    };
+
+    function jitter(ms) { return ms + Math.floor(Math.random() * 500); }
+
+    function backoffDelay(baseMs, fails, maxMs) {
+      const capped = Math.min(fails, 6);
+      const d = baseMs * Math.pow(2, capped);
+      return jitter(Math.min(d, maxMs));
+    }
+
+    function baseIntervals() {
+      const hidden = document.hidden;
+      return {
+        messages: hidden ? 12000 : 2500,
+        sanity:   hidden ? 90000 : 60000,
+        online:   hidden ? 20000 : 5000,
+        typing:   hidden ? 3000  : 900,
+        hb:       hidden ? 20000 : 5000
+      };
+    }
+
+    function stopAllPolls() {
+      Object.values(pollState).forEach(s => {
+        if (s.timer) clearTimeout(s.timer);
+        s.timer = null;
+        s.fails = 0;
+      });
+    }
+
+    function scheduleLoop(key, taskFn, maxMs) {
+      const run = async () => {
+        const base = baseIntervals()[key];
+        const ok = await taskFn().catch(() => false);
+
+        if (ok) pollState[key].fails = 0;
+        else pollState[key].fails += 1;
+
+        const delay = ok ? jitter(base) : backoffDelay(base, pollState[key].fails, maxMs);
+        pollState[key].timer = setTimeout(run, delay);
+      };
+
+      pollState[key].timer = setTimeout(run, Math.floor(Math.random() * 300));
+    }
+
+    function startAllPolls() {
+      stopAllPolls();
+
+      scheduleLoop("messages", async () => {
+        return await loadMessages();
+      }, 60000);
+
+      scheduleLoop("sanity", async () => {
+        return await sanitySync();
+      }, 180000);
+
+      scheduleLoop("online", async () => {
+        return await loadOnlineUsers();
+      }, 60000);
+
+      scheduleLoop("typing", async () => {
+        return await loadTypingStatus();
+      }, 15000);
+
+      scheduleLoop("hb", async () => {
+        return await updateOnlineStatus();
+      }, 60000);
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      const miniProfile = document.getElementById("mini-profile");
+      const dropdownMenu = document.getElementById("dropdown-menu");
+      const arrow = document.getElementById("arrow");
+      const contentInput = document.getElementById("content");
+
+      document.getElementById("user-phone").textContent = loggedUser;
+
+      miniProfile.onclick = () => {
+        const open = dropdownMenu.style.display === "block";
+        dropdownMenu.style.display = open ? "none" : "block";
+        arrow.style.transform = open ? "rotate(0deg)" : "rotate(180deg)";
+      };
+
+      document.addEventListener("click", (e) => {
+        if (!miniProfile.contains(e.target) && !dropdownMenu.contains(e.target)) {
+          dropdownMenu.style.display = "none";
+          arrow.style.transform = "rotate(0deg)";
+        }
+      });
+
+      document.getElementById("logout").onclick = async () => {
+        try { await sendTyping(false); } catch {}
+        sessionStorage.clear();
+        window.location.href = "index.html";
+      };
+
+      contentInput.addEventListener("keydown", e => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      contentInput.addEventListener("input", () => onUserTyping());
+      contentInput.addEventListener("focus", () => onUserTyping());
+      contentInput.addEventListener("blur", () => sendTyping(false));
+
+      document.addEventListener("visibilitychange", () => {
+        startAllPolls();
+        if (!document.hidden) {
+          sanitySync();
+          loadOnlineUsers();
+          loadTypingStatus();
+        }
+      });
+
+      setHeader();
+      renderReplyBar();
+
+      try {
+        await loadPublicFull({ forceScrollBottom: true });
+      } catch {}
+
+      startAllPolls();
+    });
   </script>
 </body>
 </html>
