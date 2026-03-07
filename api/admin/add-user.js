@@ -1,104 +1,92 @@
-const { createClient } = require("@supabase/supabase-js");
-const bcrypt = require("bcryptjs");
+import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function isAdminUser(username) {
-  const { data, error } = await supabase
-    .from("users")
-    .select("is_admin")
-    .eq("username", username)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return !!data?.is_admin;
-}
-
-module.exports = async function handler(req, res) {
-
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
-      success:false,
-      message:"Método não permitido"
+      success: false,
+      message: "Método não permitido"
+    });
+  }
+
+  const { requester, username, password } = req.body || {};
+
+  if (!requester || !username || !password) {
+    return res.status(400).json({
+      success: false,
+      message: "Dados inválidos"
     });
   }
 
   try {
-
-    const { adminUsername, newUsername, newPassword } = req.body || {};
-
-    if (!adminUsername || !newUsername || !newPassword) {
-      return res.status(400).json({
-        success:false,
-        message:"Dados obrigatórios ausentes"
-      });
-    }
-
-    const isAdmin = await isAdminUser(adminUsername);
-
-    if (!isAdmin) {
-      return res.status(403).json({
-        success:false,
-        message:"Apenas administradores podem criar usuários"
-      });
-    }
-
-    const username = newUsername.trim().toLowerCase();
-    const password = newPassword.trim();
-
-    if (!/^[a-zA-Z0-9_]{3,24}$/.test(username)) {
-      return res.status(400).json({
-        success:false,
-        message:"Username inválido (3-24 caracteres, letras ou números)"
-      });
-    }
-
-    if (password.length < 4) {
-      return res.status(400).json({
-        success:false,
-        message:"Senha precisa ter pelo menos 4 caracteres"
-      });
-    }
-
-    const { data:existing } = await supabase
+    const { data: adminUser, error: adminError } = await supabase
       .from("users")
-      .select("id")
-      .eq("username",username)
+      .select("is_admin")
+      .eq("username", requester)
       .maybeSingle();
 
-    if (existing) {
-      return res.status(409).json({
-        success:false,
-        message:"Esse usuário já existe"
+    if (adminError) throw adminError;
+
+    if (!adminUser?.is_admin) {
+      return res.status(403).json({
+        success: false,
+        message: "Apenas admins podem usar /adduser"
       });
     }
 
-    const hash = await bcrypt.hash(password,10);
+    const cleanUsername = String(username).trim();
+    const cleanPassword = String(password).trim();
 
-    const { error } = await supabase
-      .from("users")
-      .insert({
-        username,
-        password:hash,
-        is_admin:false
+    if (!/^[a-zA-Z0-9_]{3,24}$/.test(cleanUsername)) {
+      return res.status(400).json({
+        success: false,
+        message: "Username inválido. Use 3 a 24 caracteres com letras, números ou _"
       });
+    }
 
-    if (error) throw new Error(error.message);
+    if (cleanPassword.length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: "Senha muito curta"
+      });
+    }
+
+    const { data: existingUser, error: existingError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("username", cleanUsername)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "Esse usuário já existe"
+      });
+    }
+
+    const { error: insertError } = await supabase
+      .from("users")
+      .insert([{ username: cleanUsername, password: cleanPassword }]);
+
+    if (insertError) throw insertError;
 
     return res.status(200).json({
-      success:true,
-      message:`Usuário @${username} criado com sucesso`
+      success: true,
+      message: `Usuário @${cleanUsername} criado com sucesso`
     });
 
-  } catch(e) {
+  } catch (err) {
+    console.error("Erro em /api/admin/add-user:", err);
 
     return res.status(500).json({
-      success:false,
-      message:e.message || "Erro interno ao criar usuário"
+      success: false,
+      message: err.message || "Erro ao criar usuário"
     });
-
   }
-};
+}
