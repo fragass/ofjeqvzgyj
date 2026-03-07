@@ -853,6 +853,39 @@
       return true;
     }
 
+    async function runAdminRemoveUser(username) {
+      if (!currentUserIsAdmin) {
+        showOverlay("Apenas admins podem usar /removeuser", "error");
+        return false;
+      }
+
+      const confirmed = prompt(`⚠️ Para remover @${username}, digite REMOVE:`);
+      if (confirmed !== "REMOVE") {
+        showOverlay("Remoção cancelada.", "info");
+        return false;
+      }
+
+      const res = await fetch("/api/admin/remove-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          requester: loggedUser,
+          username
+        })
+      });
+
+      const data = await safeReadJson(res);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Falha ao remover usuário");
+      }
+
+      showOverlay(data.message || `Usuário @${username} removido com sucesso`, "success");
+      return true;
+    }
+
     window.addEventListener("focus", markAllSeen);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") markAllSeen();
@@ -1259,6 +1292,15 @@
       return {
         username: match[1],
         password: match[2].trim()
+      };
+    }
+
+    function parseRemoveUserCommand(text) {
+      const match = text.match(/^\/removeuser\s+@([a-zA-Z0-9_]{3,24})$/i);
+      if (!match) return null;
+
+      return {
+        username: match[1]
       };
     }
 
@@ -1735,6 +1777,7 @@
       const create = parseCreateRoom(text);
       const enter = parseEnterRoom(text);
       const addUser = parseAddUserCommand(text);
+      const removeUser = parseRemoveUserCommand(text);
 
       if (create) {
         contentInput.value = "";
@@ -1806,6 +1849,20 @@
         } catch (e) {
           console.error("Erro no /adduser:", e);
           showOverlay(e.message || "Falha ao executar /adduser", "error");
+        }
+        return;
+      }
+
+      if (removeUser) {
+        contentInput.value = "";
+        onUserTyping();
+
+        try {
+          await sendTyping(false);
+          await runAdminRemoveUser(removeUser.username);
+        } catch (e) {
+          console.error("Erro no /removeuser:", e);
+          showOverlay(e.message || "Falha ao executar /removeuser", "error");
         }
         return;
       }
@@ -1942,4 +1999,3 @@
   </script>
 </body>
 </html>
-
