@@ -84,7 +84,7 @@ module.exports = async function handler(req, res) {
         .from("profile-avatars")
         .getPublicUrl(filePath);
 
-      const avatarUrl = data.publicUrl;
+      const avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
 
       const { data: oldProfile } = await supabase
         .from("user_profiles")
