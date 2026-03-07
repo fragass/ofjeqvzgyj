@@ -58,13 +58,20 @@ module.exports = async function handler(req, res) {
         "png";
 
       const safeUsername = String(username).replace(/[^\w.-]/g, "_");
-      const fileName = `${safeUsername}/avatar-${Date.now()}.${ext}`;
+      const filePath = `${safeUsername}/avatar.${ext}`;
 
       const fileData = fs.readFileSync(file.filepath);
 
+      await supabase.storage.from("profile-avatars").remove([
+        `${safeUsername}/avatar.png`,
+        `${safeUsername}/avatar.jpg`,
+        `${safeUsername}/avatar.jpeg`,
+        `${safeUsername}/avatar.webp`
+      ]);
+
       const { error: uploadError } = await supabase.storage
         .from("profile-avatars")
-        .upload(fileName, fileData, {
+        .upload(filePath, fileData, {
           contentType: file.mimetype,
           upsert: true,
         });
@@ -75,11 +82,36 @@ module.exports = async function handler(req, res) {
 
       const { data } = supabase.storage
         .from("profile-avatars")
-        .getPublicUrl(fileName);
+        .getPublicUrl(filePath);
+
+      const avatarUrl = data.publicUrl;
+
+      const { data: oldProfile } = await supabase
+        .from("user_profiles")
+        .select("display_name")
+        .eq("username", username)
+        .maybeSingle();
+
+      const displayName = oldProfile?.display_name || username;
+
+      const { error: profileError } = await supabase
+        .from("user_profiles")
+        .upsert(
+          {
+            username,
+            display_name: displayName,
+            avatar_url: avatarUrl
+          },
+          { onConflict: "username" }
+        );
+
+      if (profileError) {
+        return res.status(500).json({ success: false, message: profileError.message });
+      }
 
       return res.status(200).json({
         success: true,
-        url: data.publicUrl
+        url: avatarUrl
       });
     } catch (e) {
       return res.status(500).json({ success: false, message: "Erro interno no upload" });
