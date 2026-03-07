@@ -837,9 +837,9 @@
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          adminUsername: loggedUser,
-          newUsername: username,
-          newPassword: password
+          requester: loggedUser,
+          username,
+          password
         })
       });
 
