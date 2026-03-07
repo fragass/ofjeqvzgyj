@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, message: "Método não permitido" });
   }
 
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
 
   if (!username || !password) {
     return res.status(400).json({ success: false, message: "Dados incompletos" });
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   try {
     const { data, error } = await supabase
       .from("users")
-      .select("*")
+      .select("username, password, is_admin")
       .eq("username", username)
       .single();
 
@@ -37,9 +37,9 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       token,
-      user: data.username
+      user: data.username,
+      isAdmin: !!data.is_admin
     });
-
   } catch (err) {
     return res.status(500).json({ success: false, message: "Erro interno" });
   }
