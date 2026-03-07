@@ -821,7 +821,35 @@
 
       await loadMessages({ forceScrollBottom: true });
 
-      showOverlay("Panic clear executado com sucesso.", "success");
+      showOverlay(data.message || "Mensagens, imagens e salas privadas foram apagadas.", "success");
+      return true;
+    }
+
+    async function runAdminAddUser(username, password) {
+      if (!currentUserIsAdmin) {
+        showOverlay("Apenas admins podem usar /adduser", "error");
+        return false;
+      }
+
+      const res = await fetch("/api/admin/add-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          adminUsername: loggedUser,
+          newUsername: username,
+          newPassword: password
+        })
+      });
+
+      const data = await safeReadJson(res);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Falha ao criar usuário");
+      }
+
+      showOverlay(data.message || `Usuário @${username} criado com sucesso`, "success");
       return true;
     }
 
@@ -1222,6 +1250,16 @@
 
       if (!room || room.length < 3) return { room: null, roomRaw };
       return { room, roomRaw };
+    }
+
+    function parseAddUserCommand(text) {
+      const match = text.match(/^\/adduser\s+([a-zA-Z0-9_]{3,24}):(.+)$/i);
+      if (!match) return null;
+
+      return {
+        username: match[1],
+        password: match[2].trim()
+      };
     }
 
     function isLeaveCommand(text) {
@@ -1696,6 +1734,7 @@
 
       const create = parseCreateRoom(text);
       const enter = parseEnterRoom(text);
+      const addUser = parseAddUserCommand(text);
 
       if (create) {
         contentInput.value = "";
@@ -1753,6 +1792,20 @@
         } catch (e) {
           console.error("Erro no /clear all:", e);
           showOverlay(e.message || "Falha ao executar /clear all", "error");
+        }
+        return;
+      }
+
+      if (addUser) {
+        contentInput.value = "";
+        onUserTyping();
+
+        try {
+          await sendTyping(false);
+          await runAdminAddUser(addUser.username, addUser.password);
+        } catch (e) {
+          console.error("Erro no /adduser:", e);
+          showOverlay(e.message || "Falha ao executar /adduser", "error");
         }
         return;
       }
