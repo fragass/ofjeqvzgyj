@@ -47,6 +47,14 @@ const BASE_TITLE = "Página Inicial - Workday";
 const SEEN_KEY = "wd_lastSeenAt";
 const BADGE_KEY = "wd_badgeCount";
 
+let realtimeClient = null;
+let realtimeConfig = null;
+let realtimeEnabled = false;
+let realtimeChannels = [];
+let realtimePublicDebounce = null;
+let realtimeDmDebounce = null;
+let realtimeOnlineDebounce = null;
+
 /* =========================
    MODAIS
 ========================= */
@@ -117,6 +125,108 @@ function resolveClearAllModal(value) {
     clearAllPendingResolver(value);
   }
   clearAllPendingResolver = null;
+}
+
+function debounceRealtimeLoad(kind) {
+  if (kind === "public") {
+    clearTimeout(realtimePublicDebounce);
+    realtimePublicDebounce = setTimeout(() => {
+      if (chatMode === "public") loadPublicMessages();
+      else loadMessages();
+    }, 120);
+    return;
+  }
+
+  if (kind === "dm") {
+    clearTimeout(realtimeDmDebounce);
+    realtimeDmDebounce = setTimeout(() => loadMessages(), 120);
+    return;
+  }
+
+  clearTimeout(realtimeOnlineDebounce);
+  realtimeOnlineDebounce = setTimeout(() => {
+    loadOnlineUsers();
+    loadTypingStatus();
+  }, 120);
+}
+
+function cleanupRealtime() {
+  if (realtimeClient && Array.isArray(realtimeChannels)) {
+    realtimeChannels.forEach(channel => {
+      try { realtimeClient.removeChannel(channel); } catch {}
+    });
+  }
+
+  realtimeChannels = [];
+  realtimeEnabled = false;
+}
+
+async function loadRealtimeConfig() {
+  if (realtimeConfig) return realtimeConfig;
+
+  const res = await apiFetch("realtime/config");
+  const data = await safeReadJson(res);
+
+  if (!res.ok || !data?.success || !data?.url || !data?.anonKey) {
+    throw new Error(data?.message || "Realtime config indisponível");
+  }
+
+  realtimeConfig = data;
+  return realtimeConfig;
+}
+
+async function setupRealtime() {
+  if (!window.supabase || typeof window.supabase.createClient !== "function") {
+    return false;
+  }
+
+  try {
+    const config = await loadRealtimeConfig();
+
+    cleanupRealtime();
+
+    realtimeClient = window.supabase.createClient(config.url, config.anonKey);
+
+    const publicChannel = realtimeClient
+      .channel("rt-public-messages")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: config.tables.public_messages
+      }, () => debounceRealtimeLoad("public"))
+      .subscribe();
+
+    const dmChannel = realtimeClient
+      .channel("rt-private-messages")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: config.tables.private_messages
+      }, () => debounceRealtimeLoad("dm"))
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: config.tables.private_channels
+      }, () => debounceRealtimeLoad("dm"))
+      .subscribe();
+
+    const onlineChannel = realtimeClient
+      .channel("rt-online-users")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: config.tables.online_users
+      }, () => debounceRealtimeLoad("online"))
+      .subscribe();
+
+    realtimeChannels = [publicChannel, dmChannel, onlineChannel];
+    realtimeEnabled = true;
+    return true;
+  } catch (err) {
+    console.error("Realtime indisponível, usando polling.", err);
+    cleanupRealtime();
+    return false;
+  }
 }
 
 function setBadgeTitle(count) {
@@ -1392,16 +1502,19 @@ document.addEventListener("DOMContentLoaded", () => {
   renderReplyBar();
 
   loadMessages();
-  setInterval(() => loadMessages(), 3000);
+  loadOnlineUsers();
+  loadTypingStatus();
+
+  setupRealtime().then((enabled) => {
+    if (!enabled) {
+      setInterval(() => loadMessages(), 3000);
+      setInterval(loadOnlineUsers, 5000);
+      setInterval(loadTypingStatus, 900);
+    }
+  });
 
   updateOnlineStatus();
   setInterval(updateOnlineStatus, 5000);
-
-  loadOnlineUsers();
-  setInterval(loadOnlineUsers, 5000);
-
-  loadTypingStatus();
-  setInterval(loadTypingStatus, 900);
 });
 
 window.toggleEmojis = toggleEmojis;
