@@ -1203,16 +1203,51 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  document.getElementById("logout").onclick = async () => {
-    const confirmed = confirm("Tem certeza que deseja sair da conta?");
-    if (!confirmed) return;
+  const logoutBtn = document.getElementById("logout");
+  const logoutModal = document.getElementById("logout-modal");
+  const cancelLogoutBtn = document.getElementById("cancel-logout");
+  const confirmLogoutBtn = document.getElementById("confirm-logout");
 
-    const btn = document.getElementById("logout");
+  function openLogoutModal() {
+    logoutModal.classList.add("show");
+    logoutModal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+  }
 
+  function closeLogoutModal() {
+    logoutModal.classList.remove("show");
+    logoutModal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+  }
+
+  logoutBtn.onclick = () => {
+    openLogoutModal();
+  };
+
+  cancelLogoutBtn.onclick = () => {
+    closeLogoutModal();
+  };
+
+  logoutModal.addEventListener("click", (e) => {
+    if (e.target.classList.contains("confirm-modal-backdrop")) {
+      closeLogoutModal();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && logoutModal.classList.contains("show")) {
+      closeLogoutModal();
+    }
+  });
+
+  confirmLogoutBtn.onclick = async () => {
     try { await sendTyping(false); } catch {}
 
-    btn.disabled = true;
-    btn.innerHTML = "<span>Saindo...</span>";
+    logoutBtn.disabled = true;
+    confirmLogoutBtn.disabled = true;
+
+    logoutBtn.innerHTML = "<span>Saindo...</span>";
+    confirmLogoutBtn.textContent = "Saindo...";
 
     sessionStorage.clear();
     window.location.href = "index.html";
@@ -1247,3 +1282,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
 window.toggleEmojis = toggleEmojis;
 window.sendMessage = sendMessage;
+
