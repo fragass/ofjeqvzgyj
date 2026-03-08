@@ -8,9 +8,12 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DM_TTL_MINUTES = Number(process.env.DM_TTL_MINUTES || 360);
 
-const PUBLIC_MESSAGES_TABLE = "messages";
-const PRIVATE_MESSAGES_TABLE = "private_messages";
-const PRIVATE_CHANNELS_TABLE = "private_channels";
+const USERS_TABLE = "users";
+const USER_PROFILES_TABLE = "rt_user_profiles";
+const ONLINE_USERS_TABLE = "rt_online_users";
+const PUBLIC_MESSAGES_TABLE = "rt_messages";
+const PRIVATE_MESSAGES_TABLE = "rt_private_messages";
+const PRIVATE_CHANNELS_TABLE = "rt_private_channels";
 const CHAT_IMAGES_BUCKET = "chat-images";
 const PROFILE_AVATARS_BUCKET = "profile-avatars";
 
@@ -134,7 +137,7 @@ async function getAdminMapFromUsers(usernames, useService = false) {
   const client = useService ? supabaseService : supabaseAnon;
 
   const { data, error } = await client
-    .from("users")
+    .from(USERS_TABLE)
     .select("username, is_admin")
     .in("username", cleanNames);
 
@@ -150,7 +153,7 @@ async function getAdminMapFromUsers(usernames, useService = false) {
 
 async function isAdminUser(username) {
   const { data, error } = await supabaseService
-    .from("users")
+    .from(USERS_TABLE)
     .select("is_admin")
     .eq("username", username)
     .maybeSingle();
@@ -161,7 +164,7 @@ async function isAdminUser(username) {
 
 async function getChannelByRoom(room) {
   const { data, error } = await supabaseService
-    .from("private_channels")
+    .from(PRIVATE_CHANNELS_TABLE)
     .select("id, room, user1, user2, last_activity")
     .eq("room", room)
     .maybeSingle();
@@ -174,7 +177,7 @@ async function cleanupExpiredPrivateChannels() {
   const cutoff = new Date(Date.now() - DM_TTL_MINUTES * 60_000).toISOString();
 
   const { data: expired, error } = await supabaseAnon
-    .from("private_channels")
+    .from(PRIVATE_CHANNELS_TABLE)
     .select("id")
     .lt("last_activity", cutoff);
 
@@ -182,8 +185,8 @@ async function cleanupExpiredPrivateChannels() {
 
   const ids = expired.map(x => x.id);
 
-  await supabaseAnon.from("private_messages").delete().in("channel_id", ids);
-  await supabaseAnon.from("private_channels").delete().in("id", ids);
+  await supabaseAnon.from(PRIVATE_MESSAGES_TABLE).delete().in("channel_id", ids);
+  await supabaseAnon.from(PRIVATE_CHANNELS_TABLE).delete().in("id", ids);
 }
 
 /* =========================
@@ -204,7 +207,7 @@ async function handleLogin(req, res) {
     }
 
     const { data, error } = await supabaseAnon
-      .from("users")
+      .from(USERS_TABLE)
       .select("username, password, is_admin")
       .eq("username", username)
       .single();
@@ -242,7 +245,7 @@ async function handleMessages(req, res) {
   if (req.method === "GET") {
     try {
       const { data, error } = await supabaseAnon
-        .from("messages")
+        .from(PUBLIC_MESSAGES_TABLE)
         .select("*")
         .order("created_at", { ascending: true });
 
@@ -291,7 +294,7 @@ async function handleMessages(req, res) {
         if (!id) return null;
 
         const { data, error } = await supabaseAnon
-          .from("messages")
+          .from(PUBLIC_MESSAGES_TABLE)
           .select("id, name, content, image_url, to, created_at")
           .eq("id", id)
           .limit(1);
@@ -346,7 +349,7 @@ async function handleMessages(req, res) {
       if (image_url) insertBody.image_url = image_url;
 
       const { error } = await supabaseAnon
-        .from("messages")
+        .from(PUBLIC_MESSAGES_TABLE)
         .insert([insertBody]);
 
       if (error) {
@@ -374,7 +377,7 @@ async function handleOnline(req, res) {
 
     if (req.method === "GET") {
       const { data, error } = await supabaseAnon
-        .from("online_users")
+        .from(ONLINE_USERS_TABLE)
         .select("*");
 
       if (error) {
@@ -423,7 +426,7 @@ async function handleOnline(req, res) {
       };
 
       let { error } = await supabaseAnon
-        .from("online_users")
+        .from(ONLINE_USERS_TABLE)
         .upsert(payload, { onConflict: "name" });
 
       if (error) {
@@ -435,7 +438,7 @@ async function handleOnline(req, res) {
         };
 
         const fallback = await supabaseAnon
-          .from("online_users")
+          .from(ONLINE_USERS_TABLE)
           .upsert(fallbackPayload, { onConflict: "name" });
 
         error = fallback.error;
@@ -464,7 +467,7 @@ async function handleProfile(req, res) {
 
     try {
       const { data, error } = await supabaseAnon
-        .from("user_profiles")
+        .from(USER_PROFILES_TABLE)
         .select("username, display_name, avatar_url, updated_at")
         .eq("username", username)
         .maybeSingle();
@@ -508,7 +511,7 @@ async function handleProfile(req, res) {
           : null;
 
       const { error } = await supabaseService
-        .from("user_profiles")
+        .from(USER_PROFILES_TABLE)
         .upsert(
           {
             username,
@@ -601,7 +604,7 @@ async function handleProfileUpload(req, res) {
     const filePath = `${safeUsername}/avatar-${Date.now()}.${normalizedExt}`;
 
     const { data: oldProfile, error: oldProfileError } = await supabaseService
-      .from("user_profiles")
+      .from(USER_PROFILES_TABLE)
       .select("display_name, avatar_url")
       .eq("username", username)
       .maybeSingle();
@@ -639,7 +642,7 @@ async function handleProfileUpload(req, res) {
     const avatarUrl = `${publicData.publicUrl}?v=${Date.now()}`;
 
     const { error: profileError } = await supabaseService
-      .from("user_profiles")
+      .from(USER_PROFILES_TABLE)
       .upsert(
         {
           username,
@@ -900,7 +903,7 @@ async function handleDmCreate(req, res) {
     }
 
     const { data: existingByPair, error: pairError } = await supabaseService
-      .from("private_channels")
+      .from(PRIVATE_CHANNELS_TABLE)
       .select("id, room, user1, user2")
       .or(`and(user1.eq.${creator},user2.eq.${target}),and(user1.eq.${target},user2.eq.${creator})`)
       .limit(1);
@@ -925,7 +928,7 @@ async function handleDmCreate(req, res) {
     }
 
     const { data: createdRows, error: insertError } = await supabaseService
-      .from("private_channels")
+      .from(PRIVATE_CHANNELS_TABLE)
       .insert([
         {
           room: roomWanted,
@@ -947,7 +950,7 @@ async function handleDmCreate(req, res) {
     const createdRow = Array.isArray(createdRows) ? createdRows[0] : createdRows;
 
     try {
-      await supabaseService.from("messages").insert([
+      await supabaseService.from(PUBLIC_MESSAGES_TABLE).insert([
         {
           name: "Sistema",
           to: target,
@@ -1003,7 +1006,7 @@ async function handleDmEnter(req, res) {
     }
 
     await supabaseAnon
-      .from("private_channels")
+      .from(PRIVATE_CHANNELS_TABLE)
       .update({ last_activity: new Date().toISOString() })
       .eq("id", channel.id);
 
@@ -1040,7 +1043,7 @@ async function handleDmLeave(req, res) {
     }
 
     await supabaseAnon
-      .from("private_channels")
+      .from(PRIVATE_CHANNELS_TABLE)
       .update({ last_activity: new Date().toISOString() })
       .eq("room", room);
 
@@ -1075,7 +1078,7 @@ async function handleDmMessages(req, res) {
       if (!allowed) return sendJson(res, 403, []);
 
       const { data, error } = await supabaseService
-        .from("private_messages")
+        .from(PRIVATE_MESSAGES_TABLE)
         .select("*")
         .eq("channel_id", channel.id)
         .order("created_at", { ascending: true });
@@ -1124,7 +1127,7 @@ async function handleDmMessages(req, res) {
         if (!id) return null;
 
         const { data, error } = await supabaseService
-          .from("private_messages")
+          .from(PRIVATE_MESSAGES_TABLE)
           .select("id, sender, message, image_url, created_at, channel_id")
           .eq("id", id)
           .limit(1);
@@ -1176,7 +1179,7 @@ async function handleDmMessages(req, res) {
       };
 
       const { error: insertError } = await supabaseService
-        .from("private_messages")
+        .from(PRIVATE_MESSAGES_TABLE)
         .insert([insertBody]);
 
       if (insertError) {
@@ -1185,7 +1188,7 @@ async function handleDmMessages(req, res) {
 
       try {
         await supabaseService
-          .from("private_channels")
+          .from(PRIVATE_CHANNELS_TABLE)
           .update({ last_activity: new Date().toISOString() })
           .eq("room", room);
       } catch {}
@@ -1201,6 +1204,30 @@ async function handleDmMessages(req, res) {
       details: String(e?.message || e),
     });
   }
+}
+
+
+async function handleRealtimeConfig(req, res) {
+  if (req.method !== "GET") {
+    return sendJson(res, 405, { success: false, message: "Método não permitido" });
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return sendJson(res, 500, { success: false, message: "Supabase realtime não configurado" });
+  }
+
+  return sendJson(res, 200, {
+    success: true,
+    url: SUPABASE_URL,
+    anonKey: SUPABASE_ANON_KEY,
+    tables: {
+      public_messages: PUBLIC_MESSAGES_TABLE,
+      private_messages: PRIVATE_MESSAGES_TABLE,
+      private_channels: PRIVATE_CHANNELS_TABLE,
+      online_users: ONLINE_USERS_TABLE,
+      user_profiles: USER_PROFILES_TABLE,
+    },
+  });
 }
 
 /* =========================
@@ -1223,6 +1250,7 @@ async function handler(req, res) {
   if (routeKey === "profile") return handleProfile(req, res);
   if (routeKey === "profile-upload") return handleProfileUpload(req, res);
   if (routeKey === "upload") return handleChatUpload(req, res);
+  if (routeKey === "realtime/config") return handleRealtimeConfig(req, res);
   if (routeKey === "admin/clear") return handleAdminClear(req, res);
   if (routeKey === "dm/create") return handleDmCreate(req, res);
   if (routeKey === "dm/enter") return handleDmEnter(req, res);
