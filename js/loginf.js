@@ -4,7 +4,11 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
   const username = document.getElementById("username").value;
   const password = document.getElementById("password").value;
 
-  const response = await fetch("/api/login", {
+  const params = new URLSearchParams({
+    route: "login"
+  });
+
+  const response = await fetch(`/api/[...route]?${params.toString()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password })
