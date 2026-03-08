@@ -652,7 +652,7 @@
   <div class="container">
     <div class="header">
       <div class="header-left">
-        <span class="warning-text" id="headerTitle">Mensagens com 24 horas de envio serão apagadas todos os dias à meia-noite.</span>
+        <span class="warning-text" id="headerTitle"></span>
         <span id="typingStatus"></span>
       </div>
       <a href="https://6bh1xntg0kegg8kp.vercel.app/" class="admin-link">🔒</a>
@@ -673,6 +673,10 @@
     </div>
   </div>
 
+<span style="position:fixed; bottom:10px; left:10px; opacity:.6; font-size:11px; z-index:999;">
+v1.0.2026.03.07 — Final Build by fragass
+</span>
+  
   <script>
     const loggedUser = sessionStorage.getItem("loggedUser");
     const currentUserIsAdmin = sessionStorage.getItem("isAdmin") === "true";
@@ -821,68 +825,7 @@
 
       await loadMessages({ forceScrollBottom: true });
 
-      showOverlay(data.message || "Mensagens, imagens e salas privadas foram apagadas.", "success");
-      return true;
-    }
-
-    async function runAdminAddUser(username, password) {
-      if (!currentUserIsAdmin) {
-        showOverlay("Apenas admins podem usar /adduser", "error");
-        return false;
-      }
-
-      const res = await fetch("/api/admin/add-user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          requester: loggedUser,
-          username,
-          password
-        })
-      });
-
-      const data = await safeReadJson(res);
-
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || "Falha ao criar usuário");
-      }
-
-      showOverlay(data.message || `Usuário @${username} criado com sucesso`, "success");
-      return true;
-    }
-
-    async function runAdminRemoveUser(username) {
-      if (!currentUserIsAdmin) {
-        showOverlay("Apenas admins podem usar /removeuser", "error");
-        return false;
-      }
-
-      const confirmed = prompt(`⚠️ Para remover @${username}, digite REMOVE:`);
-      if (confirmed !== "REMOVE") {
-        showOverlay("Remoção cancelada.", "info");
-        return false;
-      }
-
-      const res = await fetch("/api/admin/remove-user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          requester: loggedUser,
-          username
-        })
-      });
-
-      const data = await safeReadJson(res);
-
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || "Falha ao remover usuário");
-      }
-
-      showOverlay(data.message || `Usuário @${username} removido com sucesso`, "success");
+      showOverlay("❗ Chat completamente limpo. Mensagens, imagens e salas privadas foram removidas.", "success");
       return true;
     }
 
@@ -983,7 +926,7 @@
       if (chatMode === "dm" && currentRoom) {
         el.textContent = `🔐 Sala privada: ${currentRoom} (com @${currentOther}) — use /sair para voltar ao público`;
       } else {
-        el.textContent = "Mensagens com 24 horas de envio serão apagadas todos os dias à meia-noite.";
+        el.textContent = "";
       }
     }
 
@@ -1283,25 +1226,6 @@
 
       if (!room || room.length < 3) return { room: null, roomRaw };
       return { room, roomRaw };
-    }
-
-    function parseAddUserCommand(text) {
-      const match = text.match(/^\/adduser\s+([a-zA-Z0-9_]{3,24}):(.+)$/i);
-      if (!match) return null;
-
-      return {
-        username: match[1],
-        password: match[2].trim()
-      };
-    }
-
-    function parseRemoveUserCommand(text) {
-      const match = text.match(/^\/removeuser\s+@([a-zA-Z0-9_]{3,24})$/i);
-      if (!match) return null;
-
-      return {
-        username: match[1]
-      };
     }
 
     function isLeaveCommand(text) {
@@ -1776,8 +1700,6 @@
 
       const create = parseCreateRoom(text);
       const enter = parseEnterRoom(text);
-      const addUser = parseAddUserCommand(text);
-      const removeUser = parseRemoveUserCommand(text);
 
       if (create) {
         contentInput.value = "";
@@ -1835,34 +1757,6 @@
         } catch (e) {
           console.error("Erro no /clear all:", e);
           showOverlay(e.message || "Falha ao executar /clear all", "error");
-        }
-        return;
-      }
-
-      if (addUser) {
-        contentInput.value = "";
-        onUserTyping();
-
-        try {
-          await sendTyping(false);
-          await runAdminAddUser(addUser.username, addUser.password);
-        } catch (e) {
-          console.error("Erro no /adduser:", e);
-          showOverlay(e.message || "Falha ao executar /adduser", "error");
-        }
-        return;
-      }
-
-      if (removeUser) {
-        contentInput.value = "";
-        onUserTyping();
-
-        try {
-          await sendTyping(false);
-          await runAdminRemoveUser(removeUser.username);
-        } catch (e) {
-          console.error("Erro no /removeuser:", e);
-          showOverlay(e.message || "Falha ao executar /removeuser", "error");
         }
         return;
       }
@@ -1999,3 +1893,9 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
