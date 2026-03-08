@@ -3,19 +3,10 @@ const fs = require("fs");
 const formidable = require("formidable");
 const { createClient } = require("@supabase/supabase-js");
 
-module.exports.config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DM_TTL_MINUTES = Number(process.env.DM_TTL_MINUTES || 360);
-
-const supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const supabaseService = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const PUBLIC_MESSAGES_TABLE = "messages";
 const PRIVATE_MESSAGES_TABLE = "private_messages";
@@ -23,27 +14,48 @@ const PRIVATE_CHANNELS_TABLE = "private_channels";
 const CHAT_IMAGES_BUCKET = "chat-images";
 const PROFILE_AVATARS_BUCKET = "profile-avatars";
 
+const supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseService = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
 /* =========================
    HELPERS
 ========================= */
 
 function getRouteParts(req) {
-  const parts = req.query?.route;
-  if (Array.isArray(parts)) return parts;
-  if (typeof parts === "string" && parts.trim()) return [parts];
-  return [];
+  const fromQuery = req.query?.route;
+
+  if (Array.isArray(fromQuery) && fromQuery.length) {
+    return fromQuery.filter(Boolean);
+  }
+
+  if (typeof fromQuery === "string" && fromQuery.trim()) {
+    return fromQuery
+      .split("/")
+      .map(part => part.trim())
+      .filter(Boolean);
+  }
+
+  // Fallback real pela URL acessada
+  // Ex.: /api/login -> ["login"]
+  // Ex.: /api/dm/messages -> ["dm", "messages"]
+  const rawUrl = req.url || "";
+  const pathname = rawUrl.split("?")[0] || "";
+  const withoutApi = pathname.replace(/^\/api\/?/, "");
+
+  if (!withoutApi) return [];
+
+  return withoutApi
+    .split("/")
+    .map(part => part.trim())
+    .filter(Boolean);
 }
 
 function getRouteKey(req) {
   return getRouteParts(req).join("/");
 }
 
-function escapeValue(value) {
-  return String(value).replace(/"/g, '\\"');
-}
-
-function buildInFilter(values) {
-  return values.map(v => `"${escapeValue(v)}"`).join(",");
+function sendJson(res, status, payload) {
+  return res.status(status).json(payload);
 }
 
 function isValidName(name) {
@@ -70,10 +82,6 @@ function extractStoragePathFromPublicUrl(publicUrl, bucketName) {
   }
 }
 
-function sendJson(res, status, payload) {
-  return res.status(status).json(payload);
-}
-
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -96,13 +104,27 @@ function readJsonBody(req) {
 
 function parseForm(req) {
   return new Promise((resolve, reject) => {
-    const form = new formidable.IncomingForm({ multiples: false });
+    const form = new formidable.IncomingForm({
+      multiples: false,
+    });
 
     form.parse(req, (err, fields, files) => {
       if (err) return reject(err);
       resolve({ fields, files });
     });
   });
+}
+
+function normalizeSingleField(value) {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+async function safeCleanupFile(path) {
+  if (!path) return;
+  try {
+    fs.unlinkSync(path);
+  } catch {}
 }
 
 async function getAdminMapFromUsers(usernames, useService = false) {
@@ -135,13 +157,6 @@ async function isAdminUser(username) {
 
   if (error) throw new Error(error.message);
   return !!data?.is_admin;
-}
-
-async function safeCleanupFile(path) {
-  if (!path) return;
-  try {
-    fs.unlinkSync(path);
-  } catch {}
 }
 
 async function getChannelByRoom(room) {
@@ -540,11 +555,8 @@ async function handleProfileUpload(req, res) {
   try {
     const { fields, files } = await parseForm(req);
 
-    let file = files.file;
-    let username = fields.username;
-
-    if (Array.isArray(file)) file = file[0];
-    if (Array.isArray(username)) username = username[0];
+    let file = normalizeSingleField(files.file);
+    let username = normalizeSingleField(fields.username);
 
     if (!file) {
       return sendJson(res, 400, {
@@ -697,11 +709,8 @@ async function handleChatUpload(req, res) {
   try {
     const { fields, files } = await parseForm(req);
 
-    let file = files.file;
-    let fileName = fields.fileName;
-
-    if (Array.isArray(file)) file = file[0];
-    if (Array.isArray(fileName)) fileName = fileName[0];
+    let file = normalizeSingleField(files.file);
+    let fileName = normalizeSingleField(fields.fileName);
 
     if (!file) {
       return sendJson(res, 400, { error: "Nenhum arquivo enviado" });
@@ -1198,7 +1207,7 @@ async function handleDmMessages(req, res) {
    MAIN ROUTER
 ========================= */
 
-module.exports = async function handler(req, res) {
+async function handler(req, res) {
   const routeKey = getRouteKey(req);
 
   if (!SUPABASE_URL) {
@@ -1224,4 +1233,11 @@ module.exports = async function handler(req, res) {
     success: false,
     message: `Rota não encontrada: ${routeKey}`,
   });
+}
+
+module.exports = handler;
+module.exports.config = {
+  api: {
+    bodyParser: false,
+  },
 };
