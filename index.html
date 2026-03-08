@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workday CNX RT</title>
+  <link rel="icon" href="favicon.png" type="image/png">
+  <link rel="stylesheet" href="css/loginf.css">
+</head>
+<body>
+  <div class="login-card">
+    <div class="mode-switch">
+      <button type="button" id="mode-login" class="mode-btn active">Entrar</button>
+      <button type="button" id="mode-register" class="mode-btn">Criar conta</button>
+    </div>
+
+    <form id="loginForm">
+      <input type="text" id="username" placeholder="Usuário" autocomplete="off" required>
+      <input type="text" id="displayName" placeholder="Nome de exibição (cadastro)" autocomplete="off" maxlength="40" hidden>
+      <input type="password" id="password" placeholder="Senha" autocomplete="off" required>
+      <button type="submit" id="submitBtn">Entrar</button>
+    </form>
+
+    <p id="helperMsg">Ambiente de teste isolado com tabelas rt_*.</p>
+    <p id="errorMsg"></p>
+  </div>
+
+  <script src="js/loginf.js"></script>
+</body>
+</html>
