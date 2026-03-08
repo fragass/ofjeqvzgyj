@@ -708,22 +708,22 @@ async function loadPublicMessages(options = {}) {
       lastMessageId = lastVisible.id;
     }
 
-    const box = document.getElementById('messages');
+    const box = document.getElementById("messages");
     const previousScrollTop = box.scrollTop;
     const previousScrollHeight = box.scrollHeight;
     const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
     const shouldAutoScroll = forceScrollBottom || distanceFromBottom < 80;
 
-    box.innerHTML = '';
+    box.innerHTML = "";
     lastRenderedElements = [];
 
     visibleMessages.forEach(msg => {
       const isWhisper = msg.to !== null && msg.to !== undefined;
 
-      const div = document.createElement('div');
-      div.className = 'message' + (isWhisper ? ' whisper' : '');
+      const div = document.createElement("div");
+      div.className = "message" + (isWhisper ? " whisper" : "");
 
-      const date = new Date(msg.created_at).toLocaleString('pt-BR');
+      const date = new Date(msg.created_at).toLocaleString("pt-BR");
       const color = getColorFromName(msg.name);
 
       const contentHTML = msg.image_url
@@ -778,20 +778,20 @@ async function loadDmMessages(options = {}) {
 
     bumpBadgeFromMessages(msgs, "dm");
 
-    const box = document.getElementById('messages');
+    const box = document.getElementById("messages");
     const previousScrollTop = box.scrollTop;
     const previousScrollHeight = box.scrollHeight;
     const distanceFromBottom = previousScrollHeight - previousScrollTop - box.clientHeight;
     const shouldAutoScroll = forceScrollBottom || distanceFromBottom < 80;
 
-    box.innerHTML = '';
+    box.innerHTML = "";
     lastRenderedElements = [];
 
     msgs.forEach(m => {
-      const div = document.createElement('div');
-      div.className = 'message dm';
+      const div = document.createElement("div");
+      div.className = "message dm";
 
-      const date = new Date(m.created_at).toLocaleString('pt-BR');
+      const date = new Date(m.created_at).toLocaleString("pt-BR");
       const color = getColorFromName(m.sender);
 
       const dmContentHTML = m.image_url
@@ -868,6 +868,7 @@ async function createRoom(target, room) {
       showOverlay("Erro ao criar/abrir sala ❌", "error");
       return;
     }
+
     if (!data.success) {
       showOverlay(data.error || "Erro ao criar/abrir sala ❌", "error");
       return;
@@ -877,7 +878,6 @@ async function createRoom(target, room) {
 
     const roomToEnter = data.room || room;
     await enterRoom(roomToEnter);
-
   } catch {
     showOverlay("Erro ao criar/abrir sala ❌", "error");
   }
@@ -950,7 +950,7 @@ async function safeReadJson(res) {
 }
 
 async function sendPublicMessage(text) {
-  const contentInput = document.getElementById('content');
+  const contentInput = document.getElementById("content");
 
   let { to, content } = parseWhisper(text);
 
@@ -960,9 +960,9 @@ async function sendPublicMessage(text) {
     to = replyState.whisper_to;
   }
 
-  await apiFetch("messages", {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const res = await apiFetch("messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: loggedUser,
       content: content || "🖼 Imagem",
@@ -973,7 +973,12 @@ async function sendPublicMessage(text) {
     })
   });
 
-  contentInput.value = '';
+  if (!res.ok) {
+    const err = await safeReadJson(res);
+    throw new Error(err?.message || err?.error || "Falha ao enviar mensagem");
+  }
+
+  contentInput.value = "";
   pendingImageUrl = null;
   clearReplySelection();
 
@@ -983,7 +988,7 @@ async function sendPublicMessage(text) {
 }
 
 async function sendDmMessage(text) {
-  const contentInput = document.getElementById('content');
+  const contentInput = document.getElementById("content");
   text = stripImagePlaceholder(text);
 
   const basePayload = {
@@ -1032,7 +1037,7 @@ async function sendDmMessage(text) {
     }
   }
 
-  contentInput.value = '';
+  contentInput.value = "";
   pendingImageUrl = null;
   clearReplySelection();
 
@@ -1042,7 +1047,7 @@ async function sendDmMessage(text) {
 async function sendMessage() {
   if (isSending) return;
 
-  const contentInput = document.getElementById('content');
+  const contentInput = document.getElementById("content");
   const sendButton = document.querySelector(".send-btn");
   const text = contentInput.value.trim();
 
@@ -1121,7 +1126,6 @@ async function sendMessage() {
 
     if (chatMode === "dm") await sendDmMessage(text);
     else await sendPublicMessage(text);
-
   } catch (e) {
     console.error("Erro ao enviar:", e);
     showOverlay("Falha ao enviar mensagem ❌", "error");
@@ -1141,8 +1145,8 @@ async function updateOnlineStatus() {
 
   try {
     await apiFetch("online", {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: loggedUser, room, typing_room: room })
     });
   } catch {}
