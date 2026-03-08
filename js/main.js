@@ -2,11 +2,13 @@ const loggedUser = sessionStorage.getItem("loggedUser");
 const currentUserIsAdmin = sessionStorage.getItem("isAdmin") === "true";
 const IMAGE_READY_PLACEHOLDER = "📎 imagem anexada";
 
-const API_BASE = "/api";
+const API_BASE = "/api/[...route]";
 
 function buildApiUrl(route, query = {}) {
   const cleanRoute = String(route || "").replace(/^\/+|\/+$/g, "");
   const params = new URLSearchParams();
+
+  params.set("route", cleanRoute);
 
   Object.entries(query || {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
@@ -14,8 +16,7 @@ function buildApiUrl(route, query = {}) {
     }
   });
 
-  const qs = params.toString();
-  return `${API_BASE}/${cleanRoute}${qs ? `?${qs}` : ""}`;
+  return `${API_BASE}?${params.toString()}`;
 }
 
 function apiFetch(route, options = {}, query = {}) {
@@ -478,12 +479,12 @@ function setReplyFromMessage(msg, element) {
   textarea.focus();
 }
 
-document.getElementById("cancelReplyBtn").addEventListener("click", () => {
-  clearReplySelection();
-  showOverlay("Reply cancelado.", "info");
-});
-
 document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("cancelReplyBtn").addEventListener("click", () => {
+    clearReplySelection();
+    showOverlay("Reply cancelado.", "info");
+  });
+
   const contentInput = document.getElementById("content");
   if (!contentInput) return;
 
@@ -878,7 +879,8 @@ async function createRoom(target, room) {
 
     const roomToEnter = data.room || room;
     await enterRoom(roomToEnter);
-  } catch {
+  } catch (e) {
+    console.error("Erro ao criar sala:", e);
     showOverlay("Erro ao criar/abrir sala ❌", "error");
   }
 }
