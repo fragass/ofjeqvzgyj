@@ -35,6 +35,7 @@ let replyState = null;
 let lastRenderedElements = [];
 
 let typingDebounceTimer = null;
+let typingStopTimer = null;
 let lastTypingSentAt = 0;
 
 let currentProfile = {
@@ -157,7 +158,10 @@ async function teardownRealtime() {
 async function subscribePublicRealtimeChannel() {
   const channel = supabaseRealtime
     .channel(`wd-public-room-${loggedUser}-${Date.now()}`, {
-      config: { presence: { key: loggedUser } }
+      config: {
+        presence: { key: loggedUser },
+        broadcast: { self: false }
+      }
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "rt_messages" }, () => {
       debounceRealtimeRefresh(() => {
@@ -208,7 +212,12 @@ async function subscribeDmRealtimeChannel() {
   }
 
   const channel = supabaseRealtime
-    .channel(`wd-dm-room-${currentRoom}-${loggedUser}-${Date.now()}`)
+    .channel(`wd-dm-room-${currentRoom}-${loggedUser}-${Date.now()}`, {
+      config: {
+        broadcast: { self: false },
+        presence: { key: loggedUser }
+      }
+    })
     .on(
       "postgres_changes",
       {
@@ -888,25 +897,23 @@ function isClearAllCommand(text) {
 async function sendTyping(isTyping) {
   if (!loggedUser || !supabaseRealtime || !realtimeReady) return;
 
-  const now = Date.now();
-  if (isTyping && now - lastTypingSentAt < 500) return;
-  lastTypingSentAt = now;
-
-  const payload = {
-    name: loggedUser,
-    isTyping: !!isTyping,
-    topic: getRealtimeTopic(),
-    ts: now
-  };
-
   const channel = chatMode === "dm" && dmRealtimeChannel ? dmRealtimeChannel : publicRealtimeChannel;
   if (!channel) return;
+
+  const now = Date.now();
+  if (isTyping && now - lastTypingSentAt < 800) return;
+  lastTypingSentAt = now;
 
   try {
     await channel.send({
       type: "broadcast",
       event: "typing",
-      payload
+      payload: {
+        name: loggedUser,
+        isTyping: !!isTyping,
+        topic: getRealtimeTopic(),
+        ts: now
+      }
     });
   } catch {}
 }
@@ -916,17 +923,22 @@ function onUserTyping() {
   const hasText = input && input.value.trim().length > 0;
   const isFocused = document.activeElement === input;
 
+  clearTimeout(typingDebounceTimer);
+  clearTimeout(typingStopTimer);
+
   if (hasText && isFocused) {
-    clearTimeout(typingDebounceTimer);
     typingDebounceTimer = setTimeout(() => sendTyping(true), 120);
+    typingStopTimer = setTimeout(() => {
+      sendTyping(false);
+    }, 1400);
     return;
   }
 
-  clearTimeout(typingDebounceTimer);
   sendTyping(false);
 }
 
 function clearTypingUI() {
+  typingPresenceState.clear();
   const el = document.getElementById("typingStatus");
   if (el) el.textContent = "";
 }
