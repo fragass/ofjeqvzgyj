@@ -1,27 +1,34 @@
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const username = document.getElementById("username").value;
-  const password = document.getElementById("password").value;
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value.trim();
 
-  const params = new URLSearchParams({
-    route: "login"
-  });
+  try {
+    const response = await fetch("/api/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ username, password })
+    });
 
-  const response = await fetch(`/api/[...route]?${params.toString()}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  });
+    const result = await response.json();
 
-  const result = await response.json();
+    if (response.ok && result.success) {
+      sessionStorage.setItem("token", result.token);
+      sessionStorage.setItem("loggedUser", result.user);
+      sessionStorage.setItem("isAdmin", result.isAdmin ? "true" : "false");
 
-  if (result.success) {
-    sessionStorage.setItem("token", result.token);
-    sessionStorage.setItem("loggedUser", result.user);
-    sessionStorage.setItem("isAdmin", result.isAdmin ? "true" : "false");
-    window.location.href = "m3yxe8u27wpoovbz.html";
-  } else {
-    document.getElementById("errorMsg").textContent = "Usuário ou senha inválidos!";
+      window.location.href = "m3yxe8u27wpoovbz.html";
+    } else {
+      document.getElementById("errorMsg").textContent =
+        result.message || "Usuário ou senha inválidos!";
+    }
+
+  } catch (err) {
+    console.error("Erro no login:", err);
+    document.getElementById("errorMsg").textContent =
+      "Erro ao conectar com o servidor.";
   }
 });
