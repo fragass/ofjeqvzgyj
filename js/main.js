@@ -1236,4 +1236,8 @@
 
     loadTypingStatus();
     setInterval(loadTypingStatus, 900);
+
   });
+
+window.toggleEmojis = toggleEmojis;
+window.sendMessage = sendMessage;
