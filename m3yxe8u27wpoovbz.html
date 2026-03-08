@@ -591,6 +591,141 @@
         padding: 24px 18px;
       }
     }
+    .confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .22s ease, visibility .22s ease;
+}
+
+.confirm-modal.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.confirm-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.confirm-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 380px);
+  background: linear-gradient(180deg, #151a21 0%, #10151c 100%);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 25px 80px rgba(0,0,0,.55);
+  text-align: center;
+  transform: translateY(10px) scale(.98);
+  transition: transform .22s ease;
+}
+
+.confirm-modal.show .confirm-modal-card {
+  transform: translateY(0) scale(1);
+}
+
+.confirm-modal-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(218,54,51,.14);
+  border: 1px solid rgba(218,54,51,.22);
+  font-size: 24px;
+}
+
+.confirm-modal-card h3 {
+  color: #f0f6fc;
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.confirm-modal-card p {
+  color: #8b949e;
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.confirm-btn {
+  flex: 1;
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.confirm-btn-secondary {
+  background: #0f141b;
+  border: 1px solid rgba(255,255,255,.10);
+  color: #e6edf3;
+}
+
+.confirm-btn-secondary:hover {
+  background: #151a21;
+  transform: translateY(-1px);
+}
+
+.confirm-btn-danger {
+  background: linear-gradient(180deg, rgba(218,54,51,.24), rgba(218,54,51,.16));
+  border: 1px solid rgba(218,54,51,.35);
+  color: #ffd2d0;
+}
+
+.confirm-btn-danger:hover {
+  background: linear-gradient(180deg, rgba(218,54,51,.34), rgba(218,54,51,.22));
+  border-color: rgba(218,54,51,.5);
+  transform: translateY(-1px);
+}
+
+.confirm-btn:disabled {
+  opacity: .7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+@media (max-width: 480px) {
+  .confirm-modal-card {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .confirm-modal-actions {
+    flex-direction: column;
+  }
+
+  .confirm-btn {
+    width: 100%;
+  }
+}
   </style>
 </head>
 
@@ -676,11 +811,32 @@
 <span style="position:fixed; bottom:10px; left:10px; opacity:.6; font-size:11px; z-index:999;">
 v1.0.0.2026.03.07 — Final Build by fragass
 </span>
+
+    <div id="logout-modal" class="confirm-modal" aria-hidden="true">
+    <div class="confirm-modal-backdrop"></div>
+
+    <div class="confirm-modal-card" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
+      <div class="confirm-modal-icon">⚠️</div>
+
+      <h3 id="logout-modal-title">Sair da conta?</h3>
+      <p>Você tem certeza que deseja encerrar sua sessão agora?</p>
+
+      <div class="confirm-modal-actions">
+        <button type="button" id="cancel-logout" class="confirm-btn confirm-btn-secondary">
+          Cancelar
+        </button>
+        <button type="button" id="confirm-logout" class="confirm-btn confirm-btn-danger">
+          Sair
+        </button>
+      </div>
+    </div>
+  </div>
   
   <script src="js/main.js"></script>
   
 </body>
 </html>
+
 
 
 
