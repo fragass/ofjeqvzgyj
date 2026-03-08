@@ -43,15 +43,232 @@ let currentProfile = {
   avatar_url: null
 };
 
-let realtimeClient = null;
-let realtimeChannels = [];
-let realtimeReady = false;
-let realtimeInitStarted = false;
-
-
-const BASE_TITLE = "Página Inicial - Workday";
+const BASE_TITLE = "Página Inicial - Workday RT";
 const SEEN_KEY = "wd_lastSeenAt";
 const BADGE_KEY = "wd_badgeCount";
+
+let supabaseRealtime = null;
+let realtimeReady = false;
+let realtimeChannels = [];
+let realtimeDebounceTimer = null;
+
+let publicRealtimeChannel = null;
+let dmRealtimeChannel = null;
+let typingCleanupTimer = null;
+let currentDmChannelId = null;
+
+const typingPresenceState = new Map();
+
+function debounceRealtimeRefresh(fn, delay = 120) {
+  clearTimeout(realtimeDebounceTimer);
+  realtimeDebounceTimer = setTimeout(fn, delay);
+}
+
+async function loadRealtimeClient() {
+  if (!window.supabase || typeof window.supabase.createClient !== "function") return null;
+
+  const res = await apiFetch("realtime/config");
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok || !data?.success || !data?.url || !data?.anonKey) return null;
+
+  return window.supabase.createClient(data.url, data.anonKey);
+}
+
+function getRealtimeTopic() {
+  if (chatMode === "dm" && currentRoom) return `wd-dm-${currentRoom}`;
+  return "wd-public";
+}
+
+function updateOnlineUsersFromPresence() {
+  const el = document.getElementById("onlineUsers");
+  if (!el) return;
+
+  if (!publicRealtimeChannel) {
+    el.textContent = "0";
+    return;
+  }
+
+  const state = publicRealtimeChannel.presenceState?.() || {};
+  const names = Object.keys(state)
+    .map(name => String(name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  el.textContent = names.length ? names.join(", ") : "0";
+}
+
+function applyTypingStateToUI() {
+  const now = Date.now();
+  const topic = getRealtimeTopic();
+  const names = [];
+
+  typingPresenceState.forEach((entry) => {
+    if (!entry || entry.topic !== topic) return;
+    if (entry.name === loggedUser) return;
+    if (!entry.isTyping) return;
+    if (now - entry.ts > 3500) return;
+    names.push(entry.name);
+  });
+
+  names.sort((a, b) => a.localeCompare(b, "pt-BR"));
+  setTypingUI(names);
+}
+
+function upsertTypingState(payload = {}) {
+  const name = String(payload.name || "").trim();
+  if (!name) return;
+
+  typingPresenceState.set(`${payload.topic}::${name}`, {
+    name,
+    topic: payload.topic || "wd-public",
+    isTyping: !!payload.isTyping,
+    ts: Number(payload.ts || Date.now())
+  });
+
+  applyTypingStateToUI();
+}
+
+function removeTypingStateForTopic(topic) {
+  Array.from(typingPresenceState.keys()).forEach(key => {
+    if (key.startsWith(`${topic}::`)) typingPresenceState.delete(key);
+  });
+  applyTypingStateToUI();
+}
+
+function startTypingCleanupLoop() {
+  clearInterval(typingCleanupTimer);
+  typingCleanupTimer = setInterval(() => {
+    applyTypingStateToUI();
+  }, 900);
+}
+
+async function teardownRealtime() {
+  if (Array.isArray(realtimeChannels) && realtimeChannels.length && supabaseRealtime) {
+    for (const channel of realtimeChannels) {
+      try { await supabaseRealtime.removeChannel(channel); } catch {}
+    }
+  }
+  realtimeChannels = [];
+  publicRealtimeChannel = null;
+  dmRealtimeChannel = null;
+}
+
+async function subscribePublicRealtimeChannel() {
+  const channel = supabaseRealtime
+    .channel(`wd-public-room-${loggedUser}-${Date.now()}`, {
+      config: { presence: { key: loggedUser } }
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "rt_messages" }, () => {
+      debounceRealtimeRefresh(() => {
+        if (chatMode === "public") loadMessages();
+      }, 80);
+    })
+    .on("presence", { event: "sync" }, () => {
+      updateOnlineUsersFromPresence();
+    })
+    .on("broadcast", { event: "typing" }, ({ payload }) => {
+      upsertTypingState(payload);
+    });
+
+  await new Promise((resolve, reject) => {
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        try {
+          await channel.track({
+            name: loggedUser,
+            at: new Date().toISOString()
+          });
+        } catch {}
+        resolve();
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        reject(new Error(`Falha no canal público realtime: ${status}`));
+      }
+    });
+  });
+
+  realtimeChannels.push(channel);
+  publicRealtimeChannel = channel;
+}
+
+async function subscribeDmRealtimeChannel() {
+  if (!currentRoom || !currentDmChannelId) {
+    if (dmRealtimeChannel && supabaseRealtime) {
+      try { await supabaseRealtime.removeChannel(dmRealtimeChannel); } catch {}
+      realtimeChannels = realtimeChannels.filter(ch => ch !== dmRealtimeChannel);
+      dmRealtimeChannel = null;
+    }
+    return;
+  }
+
+  if (dmRealtimeChannel && supabaseRealtime) {
+    try { await supabaseRealtime.removeChannel(dmRealtimeChannel); } catch {}
+    realtimeChannels = realtimeChannels.filter(ch => ch !== dmRealtimeChannel);
+    dmRealtimeChannel = null;
+  }
+
+  const channel = supabaseRealtime
+    .channel(`wd-dm-room-${currentRoom}-${loggedUser}-${Date.now()}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "rt_private_messages",
+        filter: `channel_id=eq.${currentDmChannelId}`
+      },
+      () => {
+        debounceRealtimeRefresh(() => {
+          if (chatMode === "dm" && currentRoom) loadMessages();
+        }, 80);
+      }
+    )
+    .on("broadcast", { event: "typing" }, ({ payload }) => {
+      upsertTypingState(payload);
+    });
+
+  await new Promise((resolve, reject) => {
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") resolve();
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        reject(new Error(`Falha no canal DM realtime: ${status}`));
+      }
+    });
+  });
+
+  realtimeChannels.push(channel);
+  dmRealtimeChannel = channel;
+}
+
+async function setupRealtime() {
+  try {
+    supabaseRealtime = await loadRealtimeClient();
+    if (!supabaseRealtime) throw new Error("Realtime indisponível");
+
+    await teardownRealtime();
+    await subscribePublicRealtimeChannel();
+    if (chatMode === "dm" && currentRoom && currentDmChannelId) {
+      await subscribeDmRealtimeChannel();
+    }
+
+    realtimeReady = true;
+    startTypingCleanupLoop();
+    applyTypingStateToUI();
+  } catch (err) {
+    console.error("Falha ao iniciar realtime:", err);
+    realtimeReady = false;
+  }
+}
+
+async function refreshRealtimeContext() {
+  if (!supabaseRealtime || !realtimeReady) return;
+  try {
+    await subscribeDmRealtimeChannel();
+    applyTypingStateToUI();
+  } catch (err) {
+    console.error("Falha ao atualizar contexto realtime:", err);
+  }
+}
 
 /* =========================
    MODAIS
@@ -123,77 +340,6 @@ function resolveClearAllModal(value) {
     clearAllPendingResolver(value);
   }
   clearAllPendingResolver = null;
-}
-
-async function initRealtime() {
-  if (realtimeInitStarted) return realtimeReady;
-  realtimeInitStarted = true;
-
-  try {
-    if (!window.supabase || typeof window.supabase.createClient !== "function") {
-      throw new Error("Cliente Supabase não carregado no navegador.");
-    }
-
-    const res = await apiFetch("realtime/config");
-    const data = await res.json();
-
-    if (!res.ok || !data?.success || !data?.url || !data?.anonKey) {
-      throw new Error(data?.message || "Falha ao carregar configuração realtime.");
-    }
-
-    realtimeClient = window.supabase.createClient(data.url, data.anonKey);
-
-    subscribeRealtimeChannels();
-    realtimeReady = true;
-    console.log("[Realtime] conectado");
-    return true;
-  } catch (err) {
-    console.error("[Realtime] indisponível:", err);
-    realtimeReady = false;
-    return false;
-  }
-}
-
-function cleanupRealtimeChannels() {
-  if (!realtimeClient || !Array.isArray(realtimeChannels)) return;
-  realtimeChannels.forEach(ch => {
-    try { realtimeClient.removeChannel(ch); } catch {}
-  });
-  realtimeChannels = [];
-}
-
-function subscribeRealtimeChannels() {
-  if (!realtimeClient) return;
-
-  cleanupRealtimeChannels();
-
-  const publicChannel = realtimeClient
-    .channel(`rt-public-${loggedUser || "guest"}-${Date.now()}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "rt_messages" }, () => {
-      if (chatMode === "public") loadMessages();
-    })
-    .on("postgres_changes", { event: "*", schema: "public", table: "rt_online_users" }, () => {
-      loadOnlineUsers();
-      loadTypingStatus();
-    })
-    .on("postgres_changes", { event: "*", schema: "public", table: "rt_private_channels" }, () => {
-      if (chatMode === "dm") loadMessages();
-    })
-    .on("postgres_changes", { event: "*", schema: "public", table: "rt_private_messages" }, (payload) => {
-      const row = payload?.new || payload?.old || {};
-      if (chatMode !== "dm") return;
-      if (!currentRoom) return;
-      if (String(row.room || "") === String(currentRoom)) {
-        loadMessages();
-        return;
-      }
-      loadMessages();
-    })
-    .subscribe((status) => {
-      console.log("[Realtime] status:", status);
-    });
-
-  realtimeChannels.push(publicChannel);
 }
 
 function setBadgeTitle(count) {
@@ -740,24 +886,27 @@ function isClearAllCommand(text) {
 }
 
 async function sendTyping(isTyping) {
-  if (!loggedUser) return;
+  if (!loggedUser || !supabaseRealtime || !realtimeReady) return;
 
   const now = Date.now();
-  if (isTyping && now - lastTypingSentAt < 800) return;
+  if (isTyping && now - lastTypingSentAt < 500) return;
   lastTypingSentAt = now;
 
-  const room = (chatMode === "dm" && currentRoom) ? currentRoom : null;
+  const payload = {
+    name: loggedUser,
+    isTyping: !!isTyping,
+    topic: getRealtimeTopic(),
+    ts: now
+  };
+
+  const channel = chatMode === "dm" && dmRealtimeChannel ? dmRealtimeChannel : publicRealtimeChannel;
+  if (!channel) return;
 
   try {
-    await apiFetch("online", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: loggedUser,
-        typing: !!isTyping,
-        room,
-        typing_room: room
-      })
+    await channel.send({
+      type: "broadcast",
+      event: "typing",
+      payload
     });
   } catch {}
 }
@@ -772,6 +921,8 @@ function onUserTyping() {
     typingDebounceTimer = setTimeout(() => sendTyping(true), 120);
     return;
   }
+
+  clearTimeout(typingDebounceTimer);
   sendTyping(false);
 }
 
@@ -791,44 +942,7 @@ function setTypingUI(names) {
 }
 
 async function loadTypingStatus() {
-  try {
-    const res = await apiFetch("online");
-    const data = await res.json();
-    const users = Array.isArray(data) ? data : [];
-    const now = Date.now();
-
-    const typingUsers = users.filter(u => {
-      if (!u || !u.name) return false;
-      if (u.name === loggedUser) return false;
-
-      const isTyping =
-        u.typing === true ||
-        u.typing === 1 ||
-        u.typing === "1" ||
-        String(u.typing).toLowerCase() === "true";
-
-      if (!isTyping) return false;
-
-      const lastTypingRaw =
-        u.last_typing ?? u.lastTyping ?? u.updated_at ?? u.updatedAt ?? u.last_seen ?? u.last_seen_at;
-
-      if (!lastTypingRaw) return false;
-
-      const last = new Date(lastTypingRaw).getTime();
-      if (!Number.isFinite(last)) return false;
-
-      if (now - last > 7000) return false;
-
-      const tRoom = u.typing_room ?? u.room ?? null;
-
-      if (chatMode === "dm" && currentRoom) return tRoom === currentRoom;
-      return !tRoom;
-    });
-
-    setTypingUI(typingUsers.map(u => u.name));
-  } catch {
-    clearTypingUI();
-  }
+  applyTypingStateToUI();
 }
 
 function buildReplyPreviewHTML(preview) {
@@ -1060,11 +1174,13 @@ async function enterRoom(room) {
     chatMode = "dm";
     currentRoom = data.channel.room;
     currentOther = data.channel.other;
+    currentDmChannelId = data.channel.id;
 
     setHeader();
     clearTypingUI();
     clearReplySelection();
     await sendTyping(false);
+    await refreshRealtimeContext();
     await loadMessages({ forceScrollBottom: true });
     showOverlay(`Entrou na sala "${currentRoom}" ✅`, "success");
 
@@ -1094,10 +1210,12 @@ async function leaveRoom() {
   chatMode = "public";
   currentRoom = null;
   currentOther = null;
+  currentDmChannelId = null;
 
   setHeader();
   clearTypingUI();
   clearReplySelection();
+  await refreshRealtimeContext();
   await loadMessages({ forceScrollBottom: true });
   showOverlay(`Saiu da sala "${left}" ✅`, "success");
 
@@ -1298,26 +1416,11 @@ async function sendMessage() {
 }
 
 async function updateOnlineStatus() {
-  if (!loggedUser) return;
-
-  const room = (chatMode === "dm" && currentRoom) ? currentRoom : null;
-
-  try {
-    await apiFetch("online", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: loggedUser, room, typing_room: room })
-    });
-  } catch {}
+  updateOnlineUsersFromPresence();
 }
 
 async function loadOnlineUsers() {
-  try {
-    const res = await apiFetch("online");
-    const data = await res.json();
-    document.getElementById("onlineUsers").textContent =
-      Array.isArray(data) && data.length ? data.map(u => u.name).join(", ") : "0";
-  } catch {}
+  updateOnlineUsersFromPresence();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -1468,14 +1571,12 @@ document.addEventListener("DOMContentLoaded", () => {
   setHeader();
   renderReplyBar();
 
-  loadMessages();
-  loadOnlineUsers();
-  loadTypingStatus();
-
-  initRealtime();
+  loadMessages({ forceScrollBottom: true });
+  setupRealtime();
 
   updateOnlineStatus();
-  setInterval(updateOnlineStatus, 5000);
+  loadOnlineUsers();
+  loadTypingStatus();
 });
 
 window.toggleEmojis = toggleEmojis;
