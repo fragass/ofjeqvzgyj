@@ -145,6 +145,30 @@ async function getAdminMapFromUsers(usernames, useService = false) {
   return map;
 }
 
+async function getProfileMap(usernames, useService = false) {
+  const cleanNames = Array.from(new Set((usernames || []).filter(Boolean)));
+  if (!cleanNames.length) return {};
+
+  const client = useService ? supabaseService : supabaseAnon;
+
+  const { data, error } = await client
+    .from("user_profiles")
+    .select("username, display_name, avatar_url")
+    .in("username", cleanNames);
+
+  if (error || !Array.isArray(data)) return {};
+
+  const map = {};
+  data.forEach(profile => {
+    map[profile.username] = {
+      display_name: profile.display_name || profile.username,
+      avatar_url: profile.avatar_url || null,
+    };
+  });
+
+  return map;
+}
+
 async function isAdminUser(username) {
   const { data, error } = await supabaseService
     .from("users")
@@ -276,10 +300,13 @@ async function handleMessages(req, res) {
       const list = Array.isArray(data) ? data : [];
       const usernames = list.map(msg => msg.name).filter(Boolean);
       const adminMap = await getAdminMapFromUsers(usernames, false);
+      const profileMap = await getProfileMap(usernames, false);
 
       const enriched = list.map(msg => ({
         ...msg,
         is_admin: !!adminMap[msg.name],
+        display_name: profileMap[msg.name]?.display_name || msg.name,
+        avatar_url: profileMap[msg.name]?.avatar_url || null,
       }));
 
       return sendJson(res, 200, enriched);
@@ -1111,10 +1138,13 @@ async function handleDmMessages(req, res) {
       const list = Array.isArray(data) ? data : [];
       const usernames = list.map(msg => msg.sender).filter(Boolean);
       const adminMap = await getAdminMapFromUsers(usernames, true);
+      const profileMap = await getProfileMap(usernames, true);
 
       const enriched = list.map(msg => ({
         ...msg,
         is_admin: !!adminMap[msg.sender],
+        display_name: profileMap[msg.sender]?.display_name || msg.sender,
+        avatar_url: profileMap[msg.sender]?.avatar_url || null,
       }));
 
       return sendJson(res, 200, enriched);
