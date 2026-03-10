@@ -564,6 +564,16 @@ function getDefaultAvatar(name) {
   return svgToDataUrl(svg);
 }
 
+function getMessageAvatarSrc(msg) {
+  const displayName =
+    msg?.display_name ||
+    msg?.name ||
+    msg?.sender ||
+    "Usuário";
+
+  return msg?.avatar_url || getDefaultAvatar(displayName);
+}
+
 function getAdminBadgeHTML(isAdmin) {
   return isAdmin ? `<span class="admin-badge">ADMIN</span>` : "";
 }
@@ -1041,6 +1051,8 @@ async function loadPublicMessages(options = {}) {
 
       const date = new Date(msg.created_at).toLocaleString("pt-BR");
       const color = getColorFromName(msg.name);
+      const avatarSrc = getMessageAvatarSrc(msg);
+      const avatarAlt = escapeHTML(msg.display_name || msg.name || "Usuário");
 
       const contentHTML = msg.image_url
         ? `<a href="${escapeHTML(msg.image_url)}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>${msg.content && msg.content !== "🖼 Imagem" ? `<div style="margin-top:6px;">${highlightMentions(msg.content)}</div>` : ""}`
@@ -1049,12 +1061,19 @@ async function loadPublicMessages(options = {}) {
       const replyHTML = buildReplyPreviewHTML(msg.reply_preview);
 
       div.innerHTML = `
-        <div class="message-header">
-          <span class="username">${getNameWithBadgeHTML(msg.name, msg.is_admin, color)}</span>
-          <span class="timestamp">${date}</span>
+        <div class="message-row">
+          <img class="message-avatar" src="${avatarSrc}" alt="${avatarAlt}">
+          <div class="message-main">
+            <div class="message-header">
+              <div class="message-user-block">
+                <span class="username">${getNameWithBadgeHTML(msg.name, msg.is_admin, color)}</span>
+              </div>
+              <span class="timestamp">${date}</span>
+            </div>
+            ${replyHTML}
+            <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
+          </div>
         </div>
-        ${replyHTML}
-        <div>${isWhisper ? `<strong>Sussurro:</strong> ${contentHTML}` : contentHTML}</div>
       `;
 
       div.addEventListener("click", () => setReplyFromMessage(msg, div));
@@ -1109,6 +1128,8 @@ async function loadDmMessages(options = {}) {
 
       const date = new Date(m.created_at).toLocaleString("pt-BR");
       const color = getColorFromName(m.sender);
+      const avatarSrc = getMessageAvatarSrc(m);
+      const avatarAlt = escapeHTML(m.display_name || m.sender || "Usuário");
 
       const dmContentHTML = m.image_url
         ? `<a href="${escapeHTML(m.image_url)}" target="_blank" style="color:#58a6ff">🖼 Imagem</a>${
@@ -1121,12 +1142,19 @@ async function loadDmMessages(options = {}) {
       const replyHTML = buildReplyPreviewHTML(m.reply_preview);
 
       div.innerHTML = `
-        <div class="message-header">
-          <span class="username">${getNameWithBadgeHTML(m.sender, m.is_admin, color)}</span>
-          <span class="timestamp">${date}</span>
+        <div class="message-row">
+          <img class="message-avatar" src="${avatarSrc}" alt="${avatarAlt}">
+          <div class="message-main">
+            <div class="message-header">
+              <div class="message-user-block">
+                <span class="username">${getNameWithBadgeHTML(m.sender, m.is_admin, color)}</span>
+              </div>
+              <span class="timestamp">${date}</span>
+            </div>
+            ${replyHTML}
+            <div>${dmContentHTML}</div>
+          </div>
         </div>
-        ${replyHTML}
-        <div>${dmContentHTML}</div>
       `;
 
       div.addEventListener("click", () => setReplyFromMessage(m, div));
