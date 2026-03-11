@@ -1312,13 +1312,19 @@ async function enterRoom(room) {
     currentRoom = data.channel.room;
     currentOther = data.channel.other;
 
-    await setupDmRealtimeChannel(currentRoom);
+    const messagesBox = document.getElementById("messages");
+    if (messagesBox) messagesBox.innerHTML = "";
 
-    setHeader();
+    lastMessageId = null;
     clearTypingUI();
     clearReplySelection();
+    setHeader();
+
     await sendTyping(false);
-    await loadMessages({ forceScrollBottom: true });
+
+    await loadDmMessages({ forceScrollBottom: true });
+    await setupDmRealtimeChannel(currentRoom);
+
     showOverlay(`Entrou na sala "${currentRoom}" ✅`, "success");
 
     if (isDocActive()) markAllSeen();
@@ -1721,3 +1727,4 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 window.toggleEmojis = toggleEmojis;
 window.sendMessage = sendMessage;
+
