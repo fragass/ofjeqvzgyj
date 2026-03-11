@@ -1357,10 +1357,15 @@ async function leaveRoom() {
   currentRoom = null;
   currentOther = null;
 
+  const messagesBox = document.getElementById("messages");
+  if (messagesBox) messagesBox.innerHTML = "";
+
+  lastMessageId = null;
   setHeader();
   clearTypingUI();
   clearReplySelection();
-  await loadMessages({ forceScrollBottom: true });
+
+  await loadPublicMessages({ forceScrollBottom: true });
   showOverlay(`Saiu da sala "${left}" ✅`, "success");
 
   if (isDocActive()) markAllSeen();
@@ -1727,4 +1732,5 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 window.toggleEmojis = toggleEmojis;
 window.sendMessage = sendMessage;
+
 
