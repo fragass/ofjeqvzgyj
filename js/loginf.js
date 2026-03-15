@@ -1,8 +1,25 @@
-document.getElementById("loginForm").addEventListener("submit", async (e) => {
+const loginForm = document.getElementById("loginForm");
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
+const errorMsg = document.getElementById("errorMsg");
+const passwordToggle = document.getElementById("passwordToggle");
+
+if (passwordToggle && passwordInput) {
+  passwordToggle.addEventListener("click", () => {
+    const isPassword = passwordInput.type === "password";
+    passwordInput.type = isPassword ? "text" : "password";
+    passwordToggle.setAttribute("aria-pressed", isPassword ? "true" : "false");
+    passwordToggle.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
+  });
+}
+
+loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value.trim();
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value.trim();
+
+  errorMsg.textContent = "";
 
   try {
     const response = await fetch("/api/login", {
@@ -22,14 +39,10 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
 
       window.location.href = "8617a543f74d88b440f5ba33e1713f063665240f.html";
     } else {
-      document.getElementById("errorMsg").textContent =
-        result.message || "Usuário ou senha inválidos!";
+      errorMsg.textContent = result.message || "Usuário ou senha inválidos!";
     }
-
   } catch (err) {
     console.error("Erro no login:", err);
-    document.getElementById("errorMsg").textContent =
-      "Erro ao conectar com o servidor.";
+    errorMsg.textContent = "Erro ao conectar com o servidor.";
   }
 });
-
