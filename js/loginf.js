@@ -2,14 +2,15 @@ const loginForm = document.getElementById("loginForm");
 const usernameInput = document.getElementById("username");
 const passwordInput = document.getElementById("password");
 const errorMsg = document.getElementById("errorMsg");
-const passwordToggle = document.getElementById("passwordToggle");
+const togglePasswordBtn = document.getElementById("togglePassword");
+const submitBtn = document.getElementById("submitBtn");
 
-if (passwordToggle && passwordInput) {
-  passwordToggle.addEventListener("click", () => {
-    const isPassword = passwordInput.type === "password";
-    passwordInput.type = isPassword ? "text" : "password";
-    passwordToggle.setAttribute("aria-pressed", isPassword ? "true" : "false");
-    passwordToggle.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
+if (togglePasswordBtn) {
+  togglePasswordBtn.addEventListener("click", () => {
+    const showing = passwordInput.type === "text";
+    passwordInput.type = showing ? "password" : "text";
+    togglePasswordBtn.setAttribute("aria-pressed", showing ? "false" : "true");
+    togglePasswordBtn.setAttribute("aria-label", showing ? "Mostrar senha" : "Ocultar senha");
   });
 }
 
@@ -20,6 +21,8 @@ loginForm.addEventListener("submit", async (e) => {
   const password = passwordInput.value.trim();
 
   errorMsg.textContent = "";
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Entrando...";
 
   try {
     const response = await fetch("/api/login", {
@@ -36,13 +39,16 @@ loginForm.addEventListener("submit", async (e) => {
       sessionStorage.setItem("token", result.token);
       sessionStorage.setItem("loggedUser", result.user);
       sessionStorage.setItem("isAdmin", result.isAdmin ? "true" : "false");
-
       window.location.href = "8617a543f74d88b440f5ba33e1713f063665240f.html";
-    } else {
-      errorMsg.textContent = result.message || "Usuário ou senha inválidos!";
+      return;
     }
+
+    errorMsg.textContent = result.message || "Usuário ou senha inválidos!";
   } catch (err) {
     console.error("Erro no login:", err);
     errorMsg.textContent = "Erro ao conectar com o servidor.";
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Entrar";
   }
 });
