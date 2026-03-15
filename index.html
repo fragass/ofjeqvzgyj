@@ -9,50 +9,50 @@
   <link rel="stylesheet" href="css/loginf.css">
 </head>
 <body>
-  <main class="login-layout">
-    <section class="login-visual" aria-hidden="true"></section>
+  <div id="principalParent">
+    <div id="backgroundDoCliente" class="centro" aria-hidden="true"></div>
 
-    <section class="login-side">
-      <div class="language-box" aria-label="Idioma atual">
-        <button type="button" class="sa3-idioma-conteudo" aria-label="Selecionar idioma">
-          <span class="flag-icon" aria-hidden="true">
-            <span class="flag-br"></span>
-          </span>
+    <aside id="principal">
+      <div class="sessao idioma-topo">
+        <button type="button" class="sa3-idioma-conteudo" aria-label="Idioma atual: Português">
+          <img id="flag-icon-css-br" src="https://flagcdn.com/w40/br.png" alt="Português">
           <span class="sa3-idioma-descricao">Português</span>
           <span class="sa3-idioma-icone"></span>
         </button>
       </div>
 
-      <div class="login-content">
-        <img src="85Logo.png" alt="Concentrix" class="brand-logo">
+      <div id="pnlPrincipal" class="center-panel">
+        <div id="cabecalho">
+          <div id="logotipo" class="logotipo__imagem" aria-label="Concentrix"></div>
+        </div>
 
-        <form id="loginForm" novalidate>
-          <input type="text" id="username" placeholder="Login" autocomplete="username" required>
-
-          <div class="password-field">
-            <input type="password" id="password" placeholder="Senha" autocomplete="current-password" required>
-            <button type="button" class="password-toggle" id="togglePassword" aria-label="Mostrar senha">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5C6 5 2.1 10 1 12c1.1 2 5 7 11 7s9.9-5 11-7c-1.1-2-5-7-11-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z"></path>
-                <circle cx="12" cy="12" r="2.4"></circle>
-              </svg>
-            </button>
-          </div>
-
-          <div class="login-actions">
-            <button type="submit" class="submit-btn">Entrar</button>
-
-            <div class="support-links">
-              <a href="#" tabindex="-1">Primeiro Acesso?</a>
-              <a href="#" tabindex="-1">Esqueceu sua senha?</a>
+        <div id="conteudo">
+          <form id="loginForm" novalidate>
+            <div id="mensagens">
+              <p id="errorMsg" class="msgAlerta msgAlerta-erro" hidden></p>
             </div>
-          </div>
-        </form>
 
-        <p id="errorMsg" aria-live="polite"></p>
+            <div class="sessao">
+              <input type="text" id="username" name="username" placeholder="Login" autocomplete="username" required>
+            </div>
+
+            <div class="sessao senha-sessao">
+              <div class="hideShowPassword-wrapper">
+                <input type="password" id="password" name="password" placeholder="Senha" autocomplete="current-password" required>
+                <button type="button" id="togglePassword" class="hideShowPassword-toggle" aria-label="Mostrar senha">Mostrar senha</button>
+              </div>
+            </div>
+
+            <div class="sessao acoes-login">
+              <button type="submit" class="botao botaoConfirmar" id="submitBtn">Entrar</button>
+              <a href="#" class="esqueci primeiro-acesso">Primeiro Acesso?</a>
+              <a href="#" class="esqueci">Esqueceu sua senha?</a>
+            </div>
+          </form>
+        </div>
       </div>
-    </section>
-  </main>
+    </aside>
+  </div>
 
   <script src="js/loginf.js"></script>
 </body>
