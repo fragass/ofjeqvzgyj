@@ -3,14 +3,12 @@ const usernameInput = document.getElementById("username");
 const passwordInput = document.getElementById("password");
 const errorMsg = document.getElementById("errorMsg");
 const togglePasswordBtn = document.getElementById("togglePassword");
-const submitBtn = document.getElementById("submitBtn");
 
 if (togglePasswordBtn) {
   togglePasswordBtn.addEventListener("click", () => {
-    const showing = passwordInput.type === "text";
-    passwordInput.type = showing ? "password" : "text";
-    togglePasswordBtn.setAttribute("aria-pressed", showing ? "false" : "true");
-    togglePasswordBtn.setAttribute("aria-label", showing ? "Mostrar senha" : "Ocultar senha");
+    const isPassword = passwordInput.type === "password";
+    passwordInput.type = isPassword ? "text" : "password";
+    togglePasswordBtn.setAttribute("aria-label", isPassword ? "Ocultar senha" : "Mostrar senha");
   });
 }
 
@@ -19,10 +17,7 @@ loginForm.addEventListener("submit", async (e) => {
 
   const username = usernameInput.value.trim();
   const password = passwordInput.value.trim();
-
   errorMsg.textContent = "";
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Entrando...";
 
   try {
     const response = await fetch("/api/login", {
@@ -47,8 +42,5 @@ loginForm.addEventListener("submit", async (e) => {
   } catch (err) {
     console.error("Erro no login:", err);
     errorMsg.textContent = "Erro ao conectar com o servidor.";
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Entrar";
   }
 });
