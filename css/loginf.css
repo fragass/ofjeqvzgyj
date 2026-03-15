@@ -228,7 +228,7 @@ button:not(:disabled):not(.disabled){
   min-width:74px;
   height:29px;
   padding:0;
-  background:#5976ee;
+  background:#0d6efd;
   color:#fff;
   font-size:12px;
   font-weight:400;
@@ -238,7 +238,7 @@ button:not(:disabled):not(.disabled){
 }
 
 .submit-btn:hover{
-  background:#506ce0;
+  background:#0b5ed7;
 }
 
 .support-links{
